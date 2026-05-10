@@ -55,6 +55,7 @@ import meetingsRouter from './routes/meetings.js';
 import pluginsRouter from './routes/plugins.js';
 import systemRouter from './routes/system.js';
 import companiesRouter from './routes/companies.js';
+import companiesFinanceRouter from './routes/companies-finance.js';
 import { logAktivitaet } from './services/activity-log.js';
 import {
   authMiddleware,
@@ -515,6 +516,7 @@ app.use('/', meetingsRouter);
 app.use('/', pluginsRouter);
 app.use('/', systemRouter);
 app.use('/', companiesRouter);
+app.use('/', companiesFinanceRouter);
 
 // =============================================
 // UNTERNEHMEN — moved to ./routes/companies.ts
@@ -662,137 +664,9 @@ app.get('/api/files/read', authMiddleware, requireCompanyAccess(), (req, res) =>
 // =============================================
 
 // =============================================
-// KOSTEN
+// KOSTEN — moved to ./routes/companies-finance.ts
+// (budget/forecast + costs/{summary,by-provider,timeline} + costEntries POST)
 // =============================================
-
-// Budget forecast — projected spend trajectory per active policy
-app.get('/api/companies/:unternehmenId/budget/forecast', requireCompanyAccess(), async (req, res) => {
-  try {
-    const { getForecasts } = await import('./services/budget-forecast.js');
-    res.json({ forecasts: getForecasts(req.params.unternehmenId) });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/companies/:unternehmenId/costs/summary', requireCompanyAccess(), (req, res) => {
-  const agenten = db.select().from(agents).where(eq(agents.companyId, req.params.unternehmenId)).all();
-
-  const gesamtVerbraucht = agenten.reduce((s: number, a: any) => s + a.monthlySpendCent, 0);
-  const gesamtBudget = agenten.reduce((s: number, a: any) => s + a.monthlyBudgetCent, 0);
-
-  const proAgent = agenten.map((a: any) => ({
-    id: a.id,
-    name: a.name,
-    titel: a.title,
-    avatar: a.avatar,
-    avatarFarbe: a.avatarColor,
-    verbindungsTyp: a.connectionType,
-    verbrauchtMonatCent: a.monthlySpendCent,
-    budgetMonatCent: a.monthlyBudgetCent,
-    prozent: a.monthlyBudgetCent > 0 ? Math.round((a.monthlySpendCent / a.monthlyBudgetCent) * 100) : 0,
-  })).sort((a: any, b: any) => b.prozent - a.prozent);
-
-  res.json({
-    gesamtVerbraucht,
-    gesamtBudget,
-    gesamtProzent: gesamtBudget > 0 ? Math.round((gesamtVerbraucht / gesamtBudget) * 100) : 0,
-    proExperte: proAgent,
-  });
-});
-
-// Kosten nach Provider aggregiert
-app.get('/api/companies/:unternehmenId/costs/by-provider', requireCompanyAccess(), (req, res) => {
-  const buchungen = db.select().from(costEntries)
-    .where(eq(costEntries.companyId, req.params.unternehmenId as string)).all();
-
-  const providerMap = new Map<string, { kosten: number; tokens: number; buchungen: number }>();
-  for (const b of buchungen) {
-    const key = b.provider;
-    const entry = providerMap.get(key) || { kosten: 0, tokens: 0, buchungen: 0 };
-    entry.kosten += b.costCent;
-    entry.tokens += b.inputTokens + b.outputTokens;
-    entry.buchungen += 1;
-    providerMap.set(key, entry);
-  }
-
-  const result = Array.from(providerMap.entries())
-    .map(([anbieter, data]) => ({ anbieter, ...data }))
-    .sort((a, b) => b.kosten - a.kosten);
-
-  res.json(result);
-});
-
-// Kosten Timeline (letzte 14 Tage, pro Tag aggregiert)
-app.get('/api/companies/:unternehmenId/costs/timeline', requireCompanyAccess(), (req, res) => {
-  const tage = parseInt(req.query.tage as string) || 14;
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - tage);
-  const startISO = startDate.toISOString();
-
-  const buchungen = db.select().from(costEntries)
-    .where(eq(costEntries.companyId, req.params.unternehmenId as string))
-    .all()
-    .filter(b => b.timestamp >= startISO);
-
-  const tageMap = new Map<string, number>();
-  // Alle Tage vorab initialisieren
-  for (let i = 0; i < tage; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - (tage - 1 - i));
-    tageMap.set(d.toISOString().split('T')[0], 0);
-  }
-
-  for (const b of buchungen) {
-    const tag = b.timestamp.split('T')[0];
-    tageMap.set(tag, (tageMap.get(tag) || 0) + b.costCent);
-  }
-
-  const result = Array.from(tageMap.entries())
-    .map(([datum, kostenCent]) => ({ datum, kostenCent }));
-
-  res.json(result);
-});
-
-app.post('/api/companies/:unternehmenId/costEntries', requireCompanyAccess(), (req, res) => {
-  const { expertId, aufgabeId, anbieter, modell, inputTokens, outputTokens, kostenCent } = req.body;
-  if (!expertId || !anbieter || !modell || kostenCent === undefined) {
-    return res.status(400).json({ error: 'Required: agentId, provider, model, costCent' });
-  }
-
-  const id = uuid();
-  db.insert(costEntries).values({
-    id,
-    companyId: req.params.unternehmenId,
-    agentId: expertId,
-    taskId: aufgabeId || null,
-    provider: anbieter,
-    model: modell,
-    inputTokens: inputTokens || 0,
-    outputTokens: outputTokens || 0,
-    costCent: kostenCent,
-    timestamp: now(),
-    createdAt: now(),
-  }).run();
-
-  // Update expert spent
-  db.update(agents).set({
-    monthlySpendCent: sql`${agents.monthlySpendCent} + ${kostenCent}`,
-    updatedAt: now(),
-  }).where(eq(agents.id, expertId as string)).run();
-
-  // Check budget threshold
-  const agent = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
-  if (agent && agent.monthlyBudgetCent > 0) {
-    const prozent = Math.round((agent.monthlySpendCent / agent.monthlyBudgetCent) * 100);
-    if (prozent >= 100 && agent.status !== 'paused') {
-      db.update(agents).set({ status: 'paused', updatedAt: now() }).where(eq(agents.id, expertId as string)).run();
-      logAktivitaet(req.params.unternehmenId, 'system', 'system', 'System', `${agent.name} wurde pausiert (Budget ${prozent}%)`, 'agents', expertId);
-    }
-  }
-
-  res.status(201).json({ id });
-});
 
 // =============================================
 // PROJEKTE — moved to ./routes/projects.ts
@@ -3765,32 +3639,8 @@ app.get('/api/companies/:id/export/training', authMiddleware, requireCompanyAcce
 });
 
 // =============================================
-// BUDGET POLICIES
+// BUDGET POLICIES + INCIDENTS — moved to ./routes/companies-finance.ts
 // =============================================
-
-import { erstellePolicy, pruefeBudgets, berechneBudgetStatus } from './services/budget-policies.js';
-
-app.get('/api/companies/:id/budget-policies', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
-  const policies = db.select().from(budgetPolicies)
-    .where(eq(budgetPolicies.companyId, req.params.id as string)).all();
-  const mitStatus = policies.map(p => ({ ...p, status: berechneBudgetStatus(p.id) }));
-  res.json(mitStatus);
-});
-
-app.post('/api/companies/:id/budget-policies', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
-  const { scope, scopeId, limitCent, fenster, warnProzent, hardStop } = req.body;
-  const id = erstellePolicy({
-    unternehmenId: req.params.id as string,
-    scope, scopeId, limitCent, fenster, warnProzent, hardStop
-  });
-  res.json({ id });
-});
-
-app.get('/api/companies/:id/budget-incidents', authMiddleware, requireCompanyAccess(), requireCompanyAccess(), (req, res) => {
-  const incidents = db.select().from(budgetIncidents)
-    .where(eq(budgetIncidents.companyId, req.params.id as string)).all();
-  res.json(incidents);
-});
 
 // =============================================
 // ISSUE DEPENDENCIES
