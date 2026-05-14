@@ -3,7 +3,8 @@ import { TrendingUp, TrendingDown, Minus, Trophy, Zap, CheckCircle, XCircle, Wal
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
-import { apiExperten, type Experte } from '../api/client';
+import { apiAgents } from '@/api/agents';
+import type { Experte } from '@/api/types';
 
 function authFetch(url: string) {
   const token = localStorage.getItem('opencognit_token');
@@ -101,7 +102,7 @@ export function Performance() {
     if (!aktivesUnternehmen) return;
     setRefreshing(true);
     try {
-      const experts = await apiExperten.liste(aktivesUnternehmen.id);
+      const experts = await apiAgents.liste(aktivesUnternehmen.id);
       const statsResults = await Promise.all(
         experts.map(e =>
           authFetch(`/api/experten/${e.id}/stats`)

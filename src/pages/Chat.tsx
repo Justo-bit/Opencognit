@@ -11,6 +11,7 @@ import { useI18n } from '../i18n';
 import { useWebSocketEvent } from '../hooks/useWebSocket';
 import AgentPlan from '../components/chat/AgentPlan';
 import type { PlanTask } from '../components/chat/AgentPlan';
+import AgentInbox from '../components/chat/AgentInbox';
 
 /* ─── Pure inline styles ─ no tailwind dependency for visuals ─────────── */
 
@@ -362,6 +363,7 @@ export function Chat() {
   const [sessionStats, setSessionStats] = useState<SessionStats>({ messages: 0, inputTokens: 0, outputTokens: 0, costCents: 0 });
   const [slashIdx, setSlashIdx] = useState(0);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chat' | 'inbox'>('chat');
   const [modelInput, setModelInput] = useState('');
   const [modelSaving, setModelSaving] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
@@ -852,7 +854,32 @@ export function Chat() {
       <div style={{ flexShrink: 0, padding: '10px 24px', borderBottom: `1px solid ${C.border}`, ...flex('row', { between: true }), alignItems: 'center' }}>
         <div style={{ ...flex('row'), gap: 10, alignItems: 'center' }}>
           <img src="/opencognit.png" alt="OpenCognit" style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} />
-          {selectedAgent ? (
+          {/* Tab switcher */}
+          <div style={{ ...flex('row'), gap: 4, marginLeft: 8 }}>
+            <button
+              onClick={() => setActiveTab('chat')}
+              style={{
+                padding: '4px 12px', fontSize: 12, fontWeight: 600,
+                borderRadius: 6, border: 'none', cursor: 'pointer',
+                background: activeTab === 'chat' ? C.goldDim : 'transparent',
+                color: activeTab === 'chat' ? C.gold : C.textMuted,
+              }}
+            >
+              {de ? 'Chat' : 'Chat'}
+            </button>
+            <button
+              onClick={() => setActiveTab('inbox')}
+              style={{
+                padding: '4px 12px', fontSize: 12, fontWeight: 600,
+                borderRadius: 6, border: 'none', cursor: 'pointer',
+                background: activeTab === 'inbox' ? C.goldDim : 'transparent',
+                color: activeTab === 'inbox' ? C.gold : C.textMuted,
+              }}
+            >
+              {de ? 'Posteingang' : 'Inbox'}
+            </button>
+          </div>
+          {selectedAgent && activeTab === 'chat' ? (
             <>
               <div style={{ ...flex('row'), gap: 6, alignItems: 'center' }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{selectedAgent.name}</span>
@@ -1415,6 +1442,13 @@ export function Chat() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* A2A Inbox panel */}
+      {activeTab === 'inbox' && selectedAgent && (
+        <div style={{ position: 'absolute', inset: 0, top: 53, zIndex: 10, background: C.bg }}>
+          <AgentInbox agentId={selectedAgent.id} companyId={aktivesUnternehmen?.id || ''} agents={agents} de={de} />
+        </div>
+      )}
 
       {/* Mouse spotlight */}
       {inputFocused && (

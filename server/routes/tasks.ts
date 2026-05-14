@@ -81,7 +81,7 @@ router.post('/api/companies/:unternehmenId/tasks', requireCompanyAccess(), (req,
   const beschreibung = b.beschreibung || b.description;
   const prioritaet = b.prioritaet || b.priority;
   const zugewiesenAn = b.zugewiesenAn || b.assignedTo;
-  const { erstelltVon, parentId, projektId, zielId } = b;
+  const { erstelltVon, createdBy, parentId, projektId, projectId, zielId, goalId } = b;
 
   const unternehmenId = req.params.unternehmenId;
 
@@ -106,10 +106,10 @@ router.post('/api/companies/:unternehmenId/tasks', requireCompanyAccess(), (req,
     status: 'backlog',
     priority: prioritaet || 'medium',
     assignedTo: zugewiesenAn || null,
-    createdBy: erstelltVon || 'board',
+    createdBy: erstelltVon || createdBy || 'board',
     parentId: parentId || null,
-    projectId: projektId || null,
-    goalId: zielId || null,
+    projectId: projektId || projectId || null,
+    goalId: zielId || goalId || null,
     createdAt: now(),
     updatedAt: now(),
   }).run();

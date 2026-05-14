@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../components/ToastProvider';
-import { ApiError } from '../api/client';
+import { ApiError } from '@/api/core';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
 

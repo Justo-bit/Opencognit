@@ -56,6 +56,12 @@ import pluginsRouter from './routes/plugins.js';
 import systemRouter from './routes/system.js';
 import companiesRouter from './routes/companies.js';
 import companiesFinanceRouter from './routes/companies-finance.js';
+import settingsRouter from './routes/settings.js';
+import filesystemRouter from './routes/filesystem.js';
+import workersRouter from './routes/workers.js';
+import agentsSoulRouter from './routes/agents-soul.js';
+import onboardingRouter from './routes/onboarding.js';
+import a2aMessagesRouter from './routes/a2a-messages.js';
 import { logAktivitaet } from './services/activity-log.js';
 import {
   authMiddleware,
@@ -64,6 +70,8 @@ import {
   agentAuth,
   deriveAgentToken,
 } from './middleware/auth.js';
+import { urlRewrite, responseAlias } from './middleware/compat.js';
+import { apiRateLimit } from './middleware/rate-limit.js';
 // Re-export for any external module still importing from './index.js'
 export { authMiddleware, requireCompanyAccess, requireResourceAccess };
 
@@ -124,110 +132,9 @@ process.on('uncaughtException', (err: any) => {
 
 const app = express();
 
-// ===== DE → EN URL compatibility layer =====
-// The frontend still calls German-named endpoints while the backend
-// routes were refactored to English. This middleware rewrites URLs
-// so old frontend code continues to work.
-app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
-  req.url = req.url
-    .replace(/^\/api\/unternehmen/, '/api/companies')
-    .replace(/^\/api\/einstellungen/, '/api/settings')
-    .replace(/\/experten\b/g, '/agents')
-    .replace(/\/mitarbeiter\b/g, '/agents')
-    .replace(/\/aufgaben\b/g, '/tasks')
-    .replace(/\/ziele\b/g, '/goals')
-    .replace(/\/routinen\b/g, '/routines')
-    .replace(/\/genehmigungen\b/g, '/approvals')
-    .replace(/\/projekte\b/g, '/projects')
-    .replace(/\/aktivitaet\b/g, '/activity')
-    .replace(/\/agent-qualitaet\b/g, '/agent-quality')
-    .replace(/\/kosten\b/g, '/costs')
-    .replace(/\/zusammenfassung\b/g, '/summary')
-    .replace(/\/nach-provider\b/g, '/by-provider')
-    .replace(/\/pausieren\b/g, '/pause')
-    .replace(/\/fortsetzen\b/g, '/resume')
-    .replace(/\/genehmigen\b/g, '/approve')
-    .replace(/\/ablehnen\b/g, '/reject');
-  next();
-});
-
-// ===== EN → DE response field aliasing =====
-// Frontend code still reads German field names on many pages.
-// This middleware wraps res.json to add German aliases on responses
-// so old frontend code keeps working until the migration is complete.
-const FIELD_ALIASES: Record<string, string> = {
-  title: 'titel',
-  description: 'beschreibung',
-  createdAt: 'erstelltAm',
-  updatedAt: 'aktualisiertAm',
-  completedAt: 'abgeschlossenAm',
-  assignedTo: 'zugewiesenAn',
-  priority: 'prioritaet',
-  connectionType: 'verbindungsTyp',
-  connectionConfig: 'verbindungsConfig',
-  costCent: 'kostenCent',
-  message: 'nachricht',
-  senderType: 'absenderTyp',
-  agentId: 'expertId',
-  companyId: 'unternehmenId',
-  taskId: 'aufgabeId',
-  key: 'schluessel',
-  value: 'wert',
-  type: 'typ',
-  role: 'rolle',
-  skills: 'faehigkeiten',
-  avatarColor: 'avatarFarbe',
-  autoCycleActive: 'zyklusAktiv',
-  autoCycleIntervalSec: 'zyklusIntervallSek',
-  monthlyBudgetCent: 'budgetMonatCent',
-  monthlySpendCent: 'verbrauchtMonatCent',
-  goal: 'ziel',
-  level: 'ebene',
-  progress: 'fortschritt',
-  ownerAgentId: 'eigentuemerExpertId',
-  organizerAgentId: 'veranstalterExpertId',
-  participantIds: 'teilnehmerIds',
-  result: 'ergebnis',
-  decidedAt: 'entschiedenAm',
-  decisionNote: 'entscheidungsnotiz',
-  requestedBy: 'angefordertVon',
-  actorType: 'akteurTyp',
-  actorId: 'akteurId',
-  actorName: 'akteurName',
-  action: 'aktion',
-  entityType: 'entitaetTyp',
-  entityId: 'entitaetId',
-  read: 'gelesen',
-  active: 'aktiv',
-  content: 'inhalt',
-  lastCycle: 'letzterZyklus',
-  monthlyBudgetCent: 'budgetMonatCent',
-  uses: 'nutzungen',
-  successes: 'erfolge',
-  confidence: 'konfidenz',
-  source: 'quelle',
-  createdBy: 'erstelltVon',
-};
-
-function aliasObject(obj: any): any {
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(aliasObject);
-  const out: any = { ...obj };
-  for (const [eng, de] of Object.entries(FIELD_ALIASES)) {
-    if (eng in out && !(de in out)) out[de] = out[eng];
-  }
-  // Recurse into nested objects (e.g., approval.payload.params)
-  for (const k of Object.keys(out)) {
-    if (out[k] && typeof out[k] === 'object') out[k] = aliasObject(out[k]);
-  }
-  return out;
-}
-
-app.use((_req, res, next) => {
-  const orig = res.json.bind(res);
-  res.json = (body: any) => orig(aliasObject(body));
-  next();
-});
+// Compatibility middleware: DE → EN URL rewrites + EN → DE response aliasing
+app.use(urlRewrite);
+app.use(responseAlias);
 
 const PORT = parseInt(process.env.PORT || '3201');
 const server = http.createServer(app);
@@ -353,107 +260,8 @@ app.use('/api/webhooks', webhooksRouter);
 // so they participate in the same auth/rate-limit chain as the inline /api
 // routes. (Search this file for "MOUNT EXTRACTED ROUTERS HERE".)
 
-// ── Global API Rate Limiter (all /api routes) ───────────────────────────────
-// Protects against DoS, brute-force, and accidental request floods.
-// Configurable via env vars:
-//   API_RATE_LIMIT_READ=120      (GET/HEAD requests per window)
-//   API_RATE_LIMIT_WRITE=30      (POST/PUT/PATCH/DELETE per window)
-//   API_RATE_LIMIT_WINDOW_MS=60000 (window size in ms)
-//
-// NOTE: In-memory only — use Redis in multi-instance deployments.
-
-const RATE_LIMIT_READ = parseInt(process.env.API_RATE_LIMIT_READ || '120', 10);
-const RATE_LIMIT_WRITE = parseInt(process.env.API_RATE_LIMIT_WRITE || '30', 10);
-const RATE_LIMIT_WINDOW_MS = parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || '60000', 10);
-
-interface RateLimitEntry {
-  readCount: number;
-  writeCount: number;
-  resetAt: number;
-}
-
-const apiRateLimits = new Map<string, RateLimitEntry>();
-
-function apiRateLimit(req: express.Request, res: express.Response, next: express.NextFunction) {
-  // Skip rate limiting for webhooks (they have their own auth)
-  if (req.path.startsWith('/webhooks')) return next();
-
-  // Skip rate limiting for localhost/development
-  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-    || req.socket.remoteAddress || 'unknown';
-  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
-  const isWrite = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-  const now_ms = Date.now();
-
-  let entry = apiRateLimits.get(ip);
-  if (!entry || now_ms > entry.resetAt) {
-    entry = { readCount: 0, writeCount: 0, resetAt: now_ms + RATE_LIMIT_WINDOW_MS };
-    apiRateLimits.set(ip, entry);
-  }
-
-  const limit = isWrite ? RATE_LIMIT_WRITE : RATE_LIMIT_READ;
-  const current = isWrite ? entry.writeCount : entry.readCount;
-
-  if (current >= limit) {
-    const retryAfter = Math.ceil((entry.resetAt - now_ms) / 1000);
-    res.setHeader('Retry-After', String(retryAfter));
-    return res.status(429).json({
-      error: 'Rate limit exceeded. Please wait.',
-      limit,
-      windowMs: RATE_LIMIT_WINDOW_MS,
-      retryAfter,
-    });
-  }
-
-  if (isWrite) entry.writeCount++;
-  else entry.readCount++;
-
-  // Expose rate limit headers
-  res.setHeader('X-RateLimit-Limit', String(limit));
-  res.setHeader('X-RateLimit-Remaining', String(Math.max(0, limit - (isWrite ? entry.writeCount : entry.readCount))));
-  res.setHeader('X-RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
-
-  next();
-}
-
-// Prune both rate limit maps periodically
-setInterval(() => {
-  const now_ms = Date.now();
-  for (const [ip, entry] of apiRateLimits.entries()) {
-    if (now_ms > entry.resetAt) apiRateLimits.delete(ip);
-  }
-}, 60000);
-
 // Apply global rate limiter to all /api routes
 app.use('/api', apiRateLimit);
-// ────────────────────────────────────────────────────────────────────────────
-
-// ── Simple in-memory rate limiter for auth endpoints ────────────────────────
-const authRateLimits = new Map<string, { count: number; resetAt: number }>();
-function authRateLimit(maxPerWindow: number, windowMs: number) {
-  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
-    const entry = authRateLimits.get(ip);
-    const now_ms = Date.now();
-    if (!entry || now_ms > entry.resetAt) {
-      authRateLimits.set(ip, { count: 1, resetAt: now_ms + windowMs });
-      return next();
-    }
-    if (entry.count >= maxPerWindow) {
-      return res.status(429).json({ error: 'Too many attempts. Please wait.' });
-    }
-    entry.count++;
-    return next();
-  };
-}
-// Prune rate limit map periodically to avoid unbounded growth
-setInterval(() => {
-  const now_ms = Date.now();
-  for (const [ip, entry] of authRateLimits.entries()) {
-    if (now_ms > entry.resetAt) authRateLimits.delete(ip);
-  }
-}, 60000);
-// ────────────────────────────────────────────────────────────────────────────
 
 const now = () => new Date().toISOString();
 
@@ -517,59 +325,18 @@ app.use('/', pluginsRouter);
 app.use('/', systemRouter);
 app.use('/', companiesRouter);
 app.use('/', companiesFinanceRouter);
+app.use('/', settingsRouter);
+app.use('/', filesystemRouter);
+app.use('/', workersRouter);
+app.use('/', agentsSoulRouter);
+app.use('/', onboardingRouter);
+app.use('/', a2aMessagesRouter);
 
 // =============================================
 // UNTERNEHMEN — moved to ./routes/companies.ts
 // =============================================
 
 // (workspace/check moved to ./routes/companies.ts)
-
-// Filesystem directory browser — lists subdirectories of a given path
-app.get('/api/fs/dirs', authMiddleware, (req: any, res) => {
-  const requested = (req.query.path as string) || '';
-  const home = process.env.HOME || process.env.USERPROFILE || '/home';
-  const current = requested ? path.resolve(requested) : home;
-
-  // Safety: never list inside server/, src/, node_modules/
-  const projectRoot = path.resolve(process.cwd());
-  const blocked = ['node_modules', 'src', 'server', '.git'].map(d => path.join(projectRoot, d));
-  if (blocked.some(b => current.startsWith(b))) {
-    return res.status(403).json({ error: 'This path is not browsable' });
-  }
-
-  if (!fs.existsSync(current) || !fs.statSync(current).isDirectory()) {
-    return res.status(400).json({ error: 'Path does not exist or is not a folder' });
-  }
-
-  let dirs: { name: string; path: string }[] = [];
-  try {
-    dirs = fs.readdirSync(current, { withFileTypes: true })
-      .filter(d => d.isDirectory() && !d.name.startsWith('.'))
-      .map(d => ({ name: d.name, path: path.join(current, d.name) }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  } catch { /* permission denied etc. */ }
-
-  const parent = path.dirname(current) !== current ? path.dirname(current) : null;
-  res.json({ current, parent, home, dirs });
-});
-
-// Create a directory (used by FolderPickerModal)
-app.post('/api/fs/mkdir', authMiddleware, (req: any, res) => {
-  const { path: dirPath } = req.body as { path?: string };
-  if (!dirPath || !path.isAbsolute(dirPath)) return res.status(400).json({ error: 'Absolute path required' });
-  // Block creating inside project source tree
-  const projectRoot = path.resolve(process.cwd());
-  const blocked = ['node_modules', 'src', 'server', '.git'].map(d => path.join(projectRoot, d));
-  if (blocked.some(b => path.resolve(dirPath).startsWith(b))) {
-    return res.status(403).json({ error: 'Cannot create folder here' });
-  }
-  try {
-    fs.mkdirSync(dirPath, { recursive: true });
-    res.json({ ok: true, path: dirPath });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // (open-folder moved to ./routes/companies.ts)
 
@@ -1047,84 +814,6 @@ app.delete('/api/workspaces/:id', requireResourceAccess("workspace"), (req, res)
 // =============================================
 // ADAPTER-PLUGINS (Ökosystem)
 // =============================================
-app.get('/api/adapters', (_req, res) => {
-  res.json({
-    registered: adapterRegistry.getRegisteredAdapters(),
-    plugins: adapterRegistry.getLoadedPlugins(),
-  });
-});
-
-// (plugin-registry routes moved to ./routes/plugins.ts)
-
-// =============================================
-// WORKER POOL (Multi-Node)
-// =============================================
-function workerAuthMiddleware(req: any, res: any, next: any) {
-  const id = req.headers['x-worker-id'] as string;
-  const token = req.headers['x-worker-token'] as string;
-  if (!id || !token) return res.status(401).json({ error: 'missing worker credentials' });
-  // Lazy load to break module init cycle
-  import('./services/worker-pool.js').then(({ authenticateWorker }) => {
-    if (!authenticateWorker(id, token)) return res.status(401).json({ error: 'invalid worker credentials' });
-    req.workerId = id;
-    next();
-  }).catch(e => res.status(500).json({ error: e.message }));
-}
-
-app.get('/api/workers', authMiddleware, async (_req, res) => {
-  try {
-    const { listWorkers } = await import('./services/worker-pool.js');
-    res.json({ workers: listWorkers() });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/workers/register', authMiddleware, async (req, res) => {
-  try {
-    const { name, hostname, capabilities, maxConcurrency, id } = req.body;
-    if (!name || !Array.isArray(capabilities)) {
-      return res.status(400).json({ error: 'name and capabilities[] required' });
-    }
-    const { registerWorker } = await import('./services/worker-pool.js');
-    const w = registerWorker({ name, hostname, capabilities, maxConcurrency, id });
-    res.json(w); // includes plaintext token — shown once
-  } catch (e: any) { res.status(400).json({ error: e.message }); }
-});
-
-app.post('/api/workers/:id/disable', authMiddleware, async (req, res) => {
-  try {
-    const { disableWorker } = await import('./services/worker-pool.js');
-    disableWorker(req.params.id as string);
-    res.json({ ok: true });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// Worker-authenticated endpoints (worker sends X-Worker-Id + X-Worker-Token)
-app.post('/api/worker/heartbeat', workerAuthMiddleware, async (req: any, res) => {
-  try {
-    const { heartbeat } = await import('./services/worker-pool.js');
-    res.json(heartbeat(req.workerId));
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/worker/claim', workerAuthMiddleware, async (req: any, res) => {
-  try {
-    const { claimWork } = await import('./services/worker-pool.js');
-    const capability = (req.body?.capability as string) || null;
-    const claim = claimWork(req.workerId, capability);
-    if (!claim) return res.json({ claim: null });
-    res.json({ claim });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/worker/submit', workerAuthMiddleware, async (req: any, res) => {
-  try {
-    const { wakeupId, success, error } = req.body;
-    if (!wakeupId) return res.status(400).json({ error: 'wakeupId required' });
-    const { submitResult } = await import('./services/worker-pool.js');
-    res.json(submitResult(req.workerId, wakeupId, !!success, error));
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
 // =============================================
 // SKILLS (Phase 3) — GET /api/skills, /api/skills/categories,
 // /api/tasks/match-agent and the skills-library + learned-skills routes are
@@ -1181,283 +870,8 @@ app.delete('/api/agents/:id/skills/:skillId', requireResourceAccess("agent"), as
   }
 });
 
-// ── Export-Soul: migrate existing systemPrompt → SOUL.md file ────────────────
-app.post('/api/agents/:id/export-soul', authMiddleware, requireResourceAccess("agent"), async (req, res) => {
-  try {
-    const agent = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get();
-    if (!agent) return res.status(404).json({ error: 'Agent not found' });
-
-    const soulsDir = path.resolve('data', 'souls');
-    if (!fs.existsSync(soulsDir)) fs.mkdirSync(soulsDir, { recursive: true });
-
-    const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const soulPath = path.join(soulsDir, `${safeName}.soul.md`);
-
-    // Build structured SOUL.md from systemPrompt + agent metadata
-    const company = db.select().from(companies).where(eq(companies.id, agent.companyId)).get();
-    const soulContent = [
-      `# SOUL — ${agent.name} [${agent.role}]`,
-      `version: ${new Date().toISOString().slice(0, 10)}`,
-      '',
-      `## Identität`,
-      `Ich bin ${agent.name}, ${agent.role}${company ? ` bei {{company.name}}` : ''}.`,
-      agent.title ? `Titel: ${agent.title}` : '',
-      '',
-      `## Fähigkeiten`,
-      agent.skills
-        ? agent.skills.split(',').map((s: string) => `- ${s.trim()}`).join('\n')
-        : `- Allgemeiner Agent`,
-      '',
-      `## Kernverhalten`,
-      agent.systemPrompt
-        ? agent.systemPrompt
-        : `- Ich erledige mir zugewiesene Aufgaben präzise und vollständig.`,
-      '',
-      `## Gedächtnis-Präferenzen`,
-      `- Ich speichere Entscheidungen in [entscheidungen]`,
-      `- Ich tracke Projektstatus in [projekt]`,
-      `- Ich archiviere abgeschlossene Erkenntnisse in [erkenntnisse]`,
-      '',
-      `## Grenzen`,
-      `- Ich handle nur im Rahmen meiner zugewiesenen Aufgaben`,
-      `- Ich eskaliere blockierte Tasks an meinen Vorgesetzten`,
-    ].filter(l => l !== undefined && l !== null).join('\n');
-
-    fs.writeFileSync(soulPath, soulContent, 'utf-8');
-
-    // Update DB: link soul_path, clear old systemPrompt
-    db.update(agents)
-      .set({ soulPath, soulVersion: null })
-      .where(eq(agents.id, agent.id))
-      .run();
-
-    res.json({ soulPath, content: soulContent });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── SOUL.md: read file content ────────────────────────────────────────────────
-app.get('/api/agents/:id/soul', authMiddleware, requireResourceAccess("agent"), (req, res) => {
-  try {
-    const agent = db.select({ soulPath: agents.soulPath, soulVersion: agents.soulVersion, name: agents.name })
-      .from(agents).where(eq(agents.id, req.params.id as string)).get();
-    if (!agent) return res.status(404).json({ error: 'Agent not found' });
-    if (!agent.soulPath || !fs.existsSync(agent.soulPath)) {
-      return res.json({ soulPath: null, content: null });
-    }
-    const content = fs.readFileSync(agent.soulPath, 'utf-8');
-    res.json({ soulPath: agent.soulPath, soulVersion: agent.soulVersion, content });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── SOUL.md: save edited content ──────────────────────────────────────────────
-app.put('/api/agents/:id/soul', authMiddleware, requireResourceAccess("agent"), (req, res) => {
-  try {
-    const { content } = req.body;
-    if (typeof content !== 'string') return res.status(400).json({ error: 'content required' });
-
-    const agent = db.select({ soulPath: agents.soulPath, name: agents.name, unternehmenId: agents.companyId })
-      .from(agents).where(eq(agents.id, req.params.id as string)).get();
-    if (!agent) return res.status(404).json({ error: 'Agent not found' });
-
-    // If no soul_path yet, create one
-    let soulPath = agent.soulPath;
-    if (!soulPath) {
-      const soulsDir = path.resolve('data', 'souls');
-      if (!fs.existsSync(soulsDir)) fs.mkdirSync(soulsDir, { recursive: true });
-      const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-      soulPath = path.join(soulsDir, `${safeName}.soul.md`);
-    }
-
-    fs.writeFileSync(soulPath, content, 'utf-8');
-    db.update(agents).set({ soulPath, soulVersion: null }).where(eq(agents.id, req.params.id as string)).run();
-
-    res.json({ success: true, soulPath });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ─── SOUL Generator ──────────────────────────────────────────────────────────
-app.post('/api/agents/:id/soul/generate', authMiddleware, requireResourceAccess("agent"), async (req, res) => {
-  try {
-    const expert = db.select().from(agents).where(eq(agents.id, req.params.id as string)).get() as any;
-    if (!expert) return res.status(404).json({ error: 'Expert not found' });
-
-    const company = db.select().from(companies).where(eq(companies.id, expert.companyId)).get() as any;
-    const lang = getUiLanguage(expert.companyId);
-    const isEn = lang === 'en';
-
-    const prompt = isEn ? `You are an AI architect. Generate a structured SOUL document for this AI agent.
-
-Agent:
-- Name: ${expert.name}
-- Role: ${expert.role}
-- Skills: ${expert.skills || 'none specified'}
-- Is Orchestrator/CEO: ${expert.isOrchestrator ? 'yes' : 'no'}
-- Company: ${company?.name || 'unknown'}
-- Company goal: ${company?.goal || 'not defined'}
-
-Generate a SOUL with exactly these 4 sections. Respond ONLY with this JSON, no text before/after:
-{
-  "identity": "2-3 sentences: Who am I? What is my core task?",
-  "principles": "4-5 decision principles as a numbered list",
-  "checklist": "5-6 bullet points of what the agent does on every wakeup",
-  "personality": "2-3 sentences about communication style and personality"
-}` : `Du bist ein KI-Architekt. Generiere ein strukturiertes SOUL-Dokument für diesen KI-Agenten.
-
-Agent:
-- Name: ${expert.name}
-- Rolle: ${expert.role}
-- Skills: ${expert.skills || 'keine angegeben'}
-- Ist Orchestrator/CEO: ${expert.isOrchestrator ? 'ja' : 'nein'}
-- Unternehmen: ${company?.name || 'unbekannt'}
-- Unternehmensziel: ${company?.goal || 'nicht definiert'}
-
-Generiere ein SOUL mit genau diesen 4 Abschnitten. Antworte NUR mit diesem JSON, kein Text davor/danach:
-{
-  "identity": "2-3 Sätze: Wer bin ich? Was ist meine Kernaufgabe?",
-  "principles": "4-5 Entscheidungsprinzipien als nummerierte Liste",
-  "checklist": "5-6 Punkte als Bullet-Liste was der Agent bei jedem Wakeup tut",
-  "personality": "2-3 Sätze über Kommunikationsstil und Persönlichkeit"
-}`;
-
-    // Try Anthropic first, then OpenRouter
-    const anthropicKeyRaw = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get()?.value;
-    const anthropicKey = anthropicKeyRaw ? decryptSetting('anthropic_api_key', anthropicKeyRaw) : null;
-
-    let generated: any = null;
-
-    if (anthropicKey) {
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] }),
-      });
-      if (r.ok) {
-        const d = await r.json() as any;
-        const text = d.content?.[0]?.text || '';
-        const m = text.match(/\{[\s\S]*\}/);
-        if (m) { try { generated = JSON.parse(m[0]); } catch { /* ignore */ } }
-      }
-    }
-
-    if (!generated) {
-      const orKeyRaw = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get()?.value;
-      const orKey = orKeyRaw ? decryptSetting('openrouter_api_key', orKeyRaw) : null;
-      if (orKey) {
-        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, 'HTTP-Referer': 'http://localhost:3200', 'X-Title': 'OpenCognit SOUL' },
-          body: JSON.stringify({ model: 'openrouter/auto', messages: [{ role: 'user', content: prompt }], max_tokens: 1000 }),
-        });
-        if (r.ok) {
-          const d = await r.json() as any;
-          const text = d.choices?.[0]?.message?.content || '';
-          const m = text.match(/\{[\s\S]*\}/);
-          if (m) { try { generated = JSON.parse(m[0]); } catch { /* ignore */ } }
-        }
-      }
-    }
-
-    if (!generated) {
-      // Fallback: template-based generation
-      generated = isEn ? {
-        identity: `I am ${expert.name}, ${expert.role} at ${company?.name || 'our company'}. My main task is to ${expert.skills ? `bring expertise in ${expert.skills.split(',')[0].trim()}` : 'professionally handle my assigned tasks'} and contribute to the company goal.`,
-        principles: `1. Quality over speed — thorough beats fast\n2. Escalate blockers immediately, don't wait\n3. Document every decision\n4. When in doubt, ask the CEO\n5. Always formulate results clearly and measurably`,
-        checklist: `- Check inbox and read all new messages\n- Review active tasks and assess status\n- Identify blockers and report immediately\n- Document progress\n- Define next steps`,
-        personality: `Direct, solution-oriented and professional. Communicate clearly without filler. Take responsibility for results.`,
-      } : {
-        identity: `Ich bin ${expert.name}, ${expert.role} bei ${company?.name || 'unserem Unternehmen'}. Meine Hauptaufgabe ist es, ${expert.skills ? `Expertise in ${expert.skills.split(',')[0].trim()} einzubringen` : 'meine zugewiesenen Aufgaben professionell zu erledigen'} und zum Unternehmensziel beizutragen.`,
-        principles: `1. Qualität vor Geschwindigkeit — lieber gründlich als schnell\n2. Bei Blockern sofort eskalieren, nicht warten\n3. Jede Entscheidung dokumentieren\n4. Im Zweifel den CEO fragen\n5. Ergebnisse immer klar und messbar formulieren`,
-        checklist: `- Inbox prüfen und alle neuen Nachrichten lesen\n- Aktive Tasks reviewen und Status bewerten\n- Blocker identifizieren und sofort melden\n- Fortschritt dokumentieren\n- Nächste Schritte definieren`,
-        personality: `Direkt, lösungsorientiert und professionell. Kommuniziere klar und ohne Umschweife. Übernehme Verantwortung für Ergebnisse.`,
-      };
-    }
-
-    res.json(generated);
-  } catch (err: any) {
-    console.error('SOUL generation failed:', err);
-    res.status(500).json({ error: 'SOUL generation failed' });
-  }
-});
 
 // (POST /api/tasks/match-agent moved to ./routes/skills.ts)
-
-// =============================================
-// EINSTELLUNGEN
-// =============================================
-app.get('/api/settings', (req, res) => {
-  const uId = (req.query.unternehmenId as string) || '';
-  try {
-    // Load global ('') and company-specific keys
-    const result = db.select().from(settings).where(inArray(settings.companyId, ['', uId])).all();
-    
-    const obj: Record<string, string> = {};
-    // Sort by unternehmenId length so that '' (length 0) comes first, and specific uId (length > 0) overwrites
-    const sorted = [...result].sort((a, b) => a.companyId.length - b.companyId.length);
-    
-    for (const e of sorted) {
-      try {
-        obj[e.key] = decryptSetting(e.key, e.value);
-      } catch (decryptErr) {
-        console.warn(`[Settings] Failed to decrypt ${e.key}:`, decryptErr);
-        obj[e.key] = e.value; // fallback: return raw value
-      }
-    }
-    res.json(obj);
-  } catch (err) {
-    console.error('[Settings] Error loading settings:', err);
-    res.status(500).json({ error: 'Failed to load settings' });
-  }
-});
-
-app.put('/api/settings/:key', async (req: express.Request, res: express.Response) => {
-  const key = req.params.key;
-  const uId = req.body.unternehmenId || '';
-  const wert = (req.body.value ?? req.body.wert ?? '') as string;
-
-  // Validate Telegram bot token before saving
-  if (key === 'telegram_bot_token' && wert) {
-    try {
-      const tgCheck = await fetch(`https://api.telegram.org/bot${wert}/getMe`);
-      const tgData = await tgCheck.json() as any;
-      if (!tgData.ok) {
-        return res.status(400).json({ error: 'invalid_token', message: `Telegram bot token ungültig: ${tgData.description || 'Unauthorized'}` });
-      }
-      console.log(`[Telegram] Token validiert: @${tgData.result?.username}`);
-    } catch (e: any) {
-      return res.status(400).json({ error: 'validation_failed', message: `Telegram Validierung fehlgeschlagen: ${e.message}` });
-    }
-  }
-
-  const wertToStore = encryptSetting(key as string, String(wert));
-
-  const existing = db.select().from(settings)
-    .where(and(eq(settings.key, key), eq(settings.companyId, uId)))
-    .get();
-
-  if (existing) {
-    db.update(settings)
-      .set({ value: wertToStore, updatedAt: now() })
-      .where(and(eq(settings.key, key), eq(settings.companyId, uId)))
-      .run();
-  } else {
-    db.insert(settings)
-      .values({ key, companyId: uId, value: wertToStore, updatedAt: now() })
-      .run();
-  }
-
-  // If a new Telegram token was saved, clear the invalid-token cache so polling resumes
-  if (key === 'telegram_bot_token') {
-    messagingService.clearInvalidTokens();
-  }
-
-  res.json({ schluessel: key, unternehmenId: uId, wert });
-});
 
 // =============================================
 // RESET / DELETE company endpoints — moved to ./routes/companies.ts
@@ -2555,240 +1969,6 @@ app.get('/api/agents/:id/trace/history', requireResourceAccess("agent"), async (
 // MAGIC ONBOARDING — AI-generated team setup
 // =============================================
 
-app.post('/api/onboarding/generate-team', authMiddleware, async (req, res) => {
-  const { businessDescription, language = 'de', apiKeys: inlineKeys } = req.body;
-  if (!businessDescription?.trim()) return res.status(400).json({ error: 'businessDescription required' });
-
-  // Prefer keys sent inline (during onboarding before they're saved), then fall back to DB
-  const inlineOR = inlineKeys?.openrouter?.trim();
-  const inlineAnthropic = inlineKeys?.anthropic?.trim();
-  const inlineOpenAI = inlineKeys?.openai?.trim();
-  const inlineOllamaUrl = inlineKeys?.ollamaUrl?.trim();
-  const inlineOllamaModel = inlineKeys?.ollamaModel?.trim();
-
-  const orKey = db.select().from(settings).where(eq(settings.key, 'openrouter_api_key')).get();
-  const anthropicKey = db.select().from(settings).where(eq(settings.key, 'anthropic_api_key')).get();
-  const ollamaUrlRow = db.select().from(settings).where(eq(settings.key, 'ollama_base_url')).get();
-  const ollamaModelRow = db.select().from(settings).where(eq(settings.key, 'ollama_default_model')).get();
-
-  const effectiveOR = inlineOR || (orKey?.value ? decryptSetting('openrouter_api_key', orKey.value) : '');
-  const effectiveAnthropic = inlineAnthropic || (anthropicKey?.value ? decryptSetting('anthropic_api_key', anthropicKey.value) : '');
-  const effectiveOllamaUrl = inlineOllamaUrl || (ollamaUrlRow?.value ? decryptSetting('ollama_base_url', ollamaUrlRow.value) : '');
-  const effectiveOllamaModel = inlineOllamaModel || (ollamaModelRow?.value ? decryptSetting('ollama_default_model', ollamaModelRow.value) : '');
-
-  let apiKey = '';
-  let model = 'openrouter/auto';
-  let endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-  let headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  let isOllama = false;
-
-  let agentVerbindungsTyp = 'openrouter'; // default adapter for created agents
-  let agentDefaultModel = 'openrouter/auto';
-
-  if (effectiveOR) {
-    apiKey = effectiveOR;
-    headers['Authorization'] = `Bearer ${apiKey}`;
-    headers['HTTP-Referer'] = 'https://opencognit.mytherrablockchain.org';
-    model = 'openrouter/auto';
-    agentVerbindungsTyp = 'openrouter';
-    agentDefaultModel = 'openrouter/auto';
-  } else if (effectiveAnthropic) {
-    apiKey = effectiveAnthropic;
-    endpoint = 'https://api.anthropic.com/v1/messages';
-    headers['x-api-key'] = apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    model = 'claude-3-5-haiku-20241022';
-    agentVerbindungsTyp = 'anthropic';
-    agentDefaultModel = 'claude-3-haiku-20240307';
-  } else if (inlineOpenAI) {
-    apiKey = inlineOpenAI;
-    endpoint = 'https://api.openai.com/v1/chat/completions';
-    headers['Authorization'] = `Bearer ${apiKey}`;
-    model = 'gpt-4o-mini';
-    agentVerbindungsTyp = 'openai';
-    agentDefaultModel = 'gpt-4o-mini';
-  } else if (effectiveOllamaUrl && effectiveOllamaModel) {
-    const base = effectiveOllamaUrl.endsWith('/') ? effectiveOllamaUrl : effectiveOllamaUrl + '/';
-    endpoint = `${base}api/chat`;
-    model = effectiveOllamaModel;
-    isOllama = true;
-    agentVerbindungsTyp = 'ollama';
-    agentDefaultModel = effectiveOllamaModel;
-  } else {
-    // No API key / no Ollama model selected — return keyword-based default team
-    const defaultTeams = buildDefaultTeam(businessDescription, language);
-    return res.json({ team: defaultTeams, source: 'default' });
-  }
-
-  const isDE = language === 'de';
-  const systemPrompt = isDE
-    ? `Du bist ein Unternehmensberater der KI-Agenten-Teams für kleine und mittlere Unternehmen zusammenstellt.
-Analysiere die Geschäftsbeschreibung und erstelle ein optimales Team aus 3-5 KI-Agenten.
-Antworte NUR mit einem JSON-Objekt, kein anderer Text.`
-    : `You are a business consultant designing AI agent teams for small and medium businesses.
-Analyze the business description and create an optimal team of 3-5 AI agents.
-Respond ONLY with a JSON object, no other text.`;
-
-  const userPrompt = isDE
-    ? `Geschäftsbeschreibung: "${businessDescription}"
-
-Erstelle ein KI-Agenten-Team. Antworte mit folgendem JSON:
-{
-  "companyGoal": "Kurzes übergeordnetes Ziel in einem Satz",
-  "agents": [
-    {
-      "name": "Vorname des Agenten",
-      "rolle": "Rollenbezeichnung (kurz)",
-      "faehigkeiten": "Komma-getrennte Fähigkeiten",
-      "verbindungsTyp": "openrouter",
-      "zyklusIntervallSek": 300,
-      "systemPromptHint": "1-2 Sätze was dieser Agent hauptsächlich tut"
-    }
-  ]
-}`
-    : `Business description: "${businessDescription}"
-
-Create an AI agent team. Reply with this JSON:
-{
-  "companyGoal": "Short overarching goal in one sentence",
-  "agents": [
-    {
-      "name": "Agent first name",
-      "rolle": "Role title (short)",
-      "faehigkeiten": "Comma-separated skills",
-      "verbindungsTyp": "openrouter",
-      "zyklusIntervallSek": 300,
-      "systemPromptHint": "1-2 sentences what this agent mainly does"
-    }
-  ]
-}`;
-
-  try {
-    let responseText = '';
-    if (endpoint.includes('anthropic.com')) {
-      const r = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ model, max_tokens: 1024, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] }),
-      });
-      const d = await r.json() as any;
-      responseText = d.content?.[0]?.text ?? '';
-    } else if (isOllama) {
-      const r = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }] }),
-        signal: AbortSignal.timeout(120000),
-      });
-      const d = await r.json() as any;
-      responseText = d.message?.content ?? d.choices?.[0]?.message?.content ?? '';
-    } else {
-      const r = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }] }),
-      });
-      const d = await r.json() as any;
-      responseText = d.choices?.[0]?.message?.content ?? '';
-    }
-
-    // Extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in response');
-    const team = JSON.parse(jsonMatch[0]);
-    // Overwrite verbindungsTyp and default model on all agents to match the key that was used
-    if (Array.isArray(team.agents)) {
-      team.agents = team.agents.map((a: any) => ({
-        ...a,
-        verbindungsTyp: agentVerbindungsTyp,
-        verbindungsConfig: JSON.stringify({ model: agentDefaultModel }),
-      }));
-    }
-    res.json({ team, source: 'ai', verbindungsTyp: agentVerbindungsTyp, defaultModel: agentDefaultModel });
-  } catch (e: any) {
-    // Fallback to default
-    res.json({ team: buildDefaultTeam(businessDescription, language), source: 'default', warning: e.message });
-  }
-});
-
-function buildDefaultTeam(description: string, language: string): any {
-  const lower = description.toLowerCase();
-  const isDE = language === 'de';
-
-  const hasMarketing = /market|seo|content|social|ads|blog|werbung|social media|linkedin|outreach|kaltakquise|cold.?outreach|nachrichten|personali/i.test(lower);
-  const hasFinance = /buchhal|steuer|finan|invoice|rechnung|kosten|budget/i.test(lower);
-  const hasSales = /verkauf|sales|kunde|client|crm|angebot|kaltakquise|outreach|linkedin|lead|akquise|b2b|prospect/i.test(lower);
-  const hasSupport = /support|kundenservice|helpdesk|service|hilfe/i.test(lower);
-  const hasTech = /software|entwickl|code|api|tool|saas|app|plattform|automatisier|ki.?tool|ai.?tool/i.test(lower);
-
-  const agents: any[] = [
-    {
-      name: isDE ? 'Max' : 'Max',
-      rolle: isDE ? 'Projektmanager' : 'Project Manager',
-      faehigkeiten: isDE ? 'Planung, Koordination, Strategie, Überblick' : 'Planning, Coordination, Strategy',
-      verbindungsTyp: 'openrouter',
-      zyklusIntervallSek: 300,
-      systemPromptHint: isDE ? 'Koordiniert das Team und priorisiert Aufgaben.' : 'Coordinates the team and prioritizes tasks.',
-    }
-  ];
-
-  if (hasMarketing) agents.push({
-    name: isDE ? 'Lisa' : 'Lisa',
-    rolle: isDE ? 'Marketing Expertin' : 'Marketing Expert',
-    faehigkeiten: isDE ? 'SEO, Content, Social Media, Texten' : 'SEO, Content, Social Media, Copywriting',
-    verbindungsTyp: 'openrouter',
-    zyklusIntervallSek: 600,
-    systemPromptHint: isDE ? 'Erstellt Marketingmaterialien und analysiert Online-Präsenz.' : 'Creates marketing materials and analyzes online presence.',
-  });
-
-  if (hasFinance) agents.push({
-    name: isDE ? 'Felix' : 'Felix',
-    rolle: isDE ? 'Finanz-Assistent' : 'Finance Assistant',
-    faehigkeiten: isDE ? 'Buchführung, Rechnungen, Kostenanalyse' : 'Bookkeeping, Invoices, Cost Analysis',
-    verbindungsTyp: 'openrouter',
-    zyklusIntervallSek: 900,
-    systemPromptHint: isDE ? 'Überwacht Ausgaben und erstellt Finanzberichte.' : 'Monitors expenses and creates financial reports.',
-  });
-
-  if (hasSales) agents.push({
-    name: isDE ? 'Sophie' : 'Sophie',
-    rolle: isDE ? 'Vertriebs-Assistentin' : 'Sales Assistant',
-    faehigkeiten: isDE ? 'CRM, Angebote, Kundenpflege, Nachfassen' : 'CRM, Proposals, Client Relations',
-    verbindungsTyp: 'openrouter',
-    zyklusIntervallSek: 600,
-    systemPromptHint: isDE ? 'Unterstützt im Vertrieb und pflegt Kundenbeziehungen.' : 'Supports sales and maintains client relationships.',
-  });
-
-  if (hasTech) agents.push({
-    name: isDE ? 'Alex' : 'Alex',
-    rolle: isDE ? 'Produkt-Spezialist' : 'Product Specialist',
-    faehigkeiten: isDE ? 'Produktentwicklung, API, Automatisierung, Testing' : 'Product, API, Automation, Testing',
-    verbindungsTyp: 'openrouter',
-    zyklusIntervallSek: 600,
-    systemPromptHint: isDE ? 'Analysiert Produktfeedback und koordiniert technische Verbesserungen.' : 'Analyzes product feedback and coordinates technical improvements.',
-  });
-
-  if (hasSupport || agents.length < 3) agents.push({
-    name: isDE ? 'Tom' : 'Tom',
-    rolle: isDE ? 'Assistent' : 'Assistant',
-    faehigkeiten: isDE ? 'Recherche, E-Mail, Texte, Dokumentation' : 'Research, Email, Writing, Documentation',
-    verbindungsTyp: 'openrouter',
-    zyklusIntervallSek: 600,
-    systemPromptHint: isDE ? 'Erledigt allgemeine Assistenzaufgaben.' : 'Handles general assistant tasks.',
-  });
-
-  // Build a description-aware goal
-  const goal = isDE
-    ? `${description.slice(0, 80).trim()}…`
-    : `${description.slice(0, 80).trim()}…`;
-
-  return {
-    companyGoal: goal,
-    agents: agents.slice(0, 5),
-  };
-}
-
-// =============================================
 // DAILY BRIEFING — AI-generated CEO summary
 // =============================================
 
@@ -5153,6 +4333,9 @@ async function start() {
   } catch (error) {
     console.error('⚠️ Fehler beim Laden der Adapter-Plugins:', error);
   }
+
+  // Initialize resilience layer (circuit breaker + health checks + failover)
+  adapterRegistry.initResilience();
 
   // Start Telegram Polling (Gateway Mode)
   messagingService.startPolling().catch(console.error);

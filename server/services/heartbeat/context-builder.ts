@@ -6,6 +6,7 @@ import { agents, tasks, goals, projects, issueRelations, comments, palaceKg, cha
 import { eq, and, inArray, desc, asc, isNull, sql } from 'drizzle-orm';
 import type { AdapterContext, AdapterTask, CompanyGoal } from '../../adapters/types.js';
 import { memoryService } from '../memory/index.js';
+import { a2aMessageBus } from '../a2a-message-bus.js';
 
 export interface BuildContextParams {
   taskFull: any;
@@ -34,15 +35,25 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
     priority: taskFull.priority,
   };
 
-  // ─── Unified memory recall — palace memory + learned skills ──────────────
-  // One call, auto-routed. The MemoryService internally hits palace_* for the
-  // agent's personal store and learnedSkills for cross-agent reusable recipes.
+  // ─── Unified memory recall — hierarchical RAG (Phase 1) ─────────────────
+  // Queries Working → Episodic → Semantic layers with hybrid ranking.
+  // Falls back to legacy palace path if hierarchical engine fails.
   const recallQuery = `${taskFull.title} ${taskFull.description || ''}`;
   const recall = await memoryService.recall({
     agentId,
     companyId,
     query: recallQuery,
     limits: { learnedSkills: 3 },
+    scope: {
+      palace: true,
+      learnedSkills: true,
+      // Enable hierarchical RAG engine
+      hierarchical: true,
+      layers: ['working', 'episodic', 'semantic'],
+      perLayerLimit: 8,
+      topK: 10,
+      recencyBoost: 0.5,
+    },
   });
   const memoryContext = recall.contextMarkdown || null;
   if (recall.sources.learnedSkills > 0) {
@@ -79,6 +90,24 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
       if (lines.length > 0) {
         boardKommunikation = lines.join('\n');
       }
+    }
+  } catch { /* non-critical */ }
+  // ────────────────────────────────────────────────────────────────────
+
+  // ─── A2A Inbox — unread peer messages ────────────────────────────────
+  // Inject direct messages from other agents so the agent can respond
+  // within its heartbeat cycle without waiting for a task assignment.
+  let a2aInbox: string | undefined;
+  try {
+    const unreadMsgs = await a2aMessageBus.getInbox(agentId, { unreadOnly: true, limit: 5 });
+    if (unreadMsgs.length > 0) {
+      const lines = unreadMsgs.map(m => {
+        const ts = m.createdAt ? new Date(m.createdAt).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+        const from = m.senderName || 'Agent';
+        const prefix = m.type === 'request' ? '📣 REQUEST' : m.type === 'response' ? '💬 REPLY' : '💬 MSG';
+        return `[${ts}] ${prefix} from ${from}: ${m.payload.text}`;
+      });
+      a2aInbox = `📬 You have ${unreadMsgs.length} unread message(s) from other agents:\n${lines.join('\n')}\n\nYou may respond by using the send_message action or by including [A2A_REPLY:toAgentId] in your output.`;
     }
   } catch { /* non-critical */ }
   // ────────────────────────────────────────────────────────────────────
@@ -228,6 +257,7 @@ export async function buildAdapterContext(params: BuildContextParams): Promise<A
       ...(memoryContext ? { memory: memoryContext } : {}),
       ...(letzteEntscheidung ? { letzteEntscheidung } : {}),
       ...(boardKommunikation ? { boardKommunikation } : {}),
+      ...(a2aInbox ? { a2aInbox } : {}),
       ...(blockerOutputs ? { vorgaengerOutputs: blockerOutputs } : {}),
       ...(advisorPlan ? { advisorPlan: `### 🧠 STRATEGISCHER PLAN DES ARCHITEKTEN/ADVISORS\n\n${advisorPlan}\n\n*Bitte befolge diesen Plan strikt bei der Ausführung der Aufgabe.*` } : {}),
       // Orchestrator gets full team + task overview

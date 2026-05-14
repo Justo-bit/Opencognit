@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { apiUnternehmen, apiMemberships, type Unternehmen, type Mitgliedschaft } from '../api/client';
+import { apiCompanies } from '@/api/companies';
+import { apiMemberships } from '@/api/memberships';
+import type { Unternehmen, Mitgliedschaft } from '@/api/types';
 
 interface CompanyContextType {
   unternehmen: Unternehmen[];
@@ -46,7 +48,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const [data, memberships] = await Promise.all([
-        apiUnternehmen.liste(),
+        apiCompanies.liste(),
         apiMemberships.meine().catch(() => [] as Mitgliedschaft[]),
       ]);
       setUnternehmen(data);

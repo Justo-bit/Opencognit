@@ -14,10 +14,10 @@ import { useI18n } from '../i18n';
 import { PageHelp } from '../components/PageHelp';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import {
-  apiProjekte, apiAufgaben, apiExperten,
-  type Projekt, type Aufgabe, type Experte,
-} from '../api/client';
+import { apiProjects } from '@/api/projects';
+import { apiTasks } from '@/api/tasks';
+import { apiAgents } from '@/api/agents';
+import type { Projekt, Aufgabe, Experte } from '@/api/types';
 
 // ===== Projekt Status Badge =====
 function ProjektStatusBadge({ status }: { status: Projekt['status'] }) {
@@ -94,7 +94,7 @@ function ProjektModal({ unternehmenId, experten, onClose, onSaved }: ProjektModa
     setSaving(true);
     setError(null);
     try {
-      await apiProjekte.erstellen(unternehmenId, {
+      await apiProjects.erstellen(unternehmenId, {
         name: name.trim(),
         beschreibung: beschreibung.trim() || undefined,
         status,
@@ -346,15 +346,15 @@ export function Projects() {
   const [whiteboardProjekt, setWhiteboardProjekt] = useState<{ id: string; name: string } | null>(null);
 
   const { data: projekte, loading: loadingP, reload: reloadProjekte } = useApi<Projekt[]>(
-    () => apiProjekte.liste(aktivesUnternehmen!.id),
+    () => apiProjects.liste(aktivesUnternehmen!.id),
     [aktivesUnternehmen?.id],
   );
   const { data: alleAufgaben, loading: loadingA, reload: reloadAufgaben } = useApi<Aufgabe[]>(
-    () => apiAufgaben.liste(aktivesUnternehmen!.id),
+    () => apiTasks.liste(aktivesUnternehmen!.id),
     [aktivesUnternehmen?.id],
   );
   const { data: alleExperten } = useApi<Experte[]>(
-    () => apiExperten.liste(aktivesUnternehmen!.id),
+    () => apiAgents.liste(aktivesUnternehmen!.id),
     [aktivesUnternehmen?.id],
   );
 
@@ -390,7 +390,7 @@ export function Projects() {
   const handleDelete = async (id: string) => {
     if (!confirm(i18n.t.projekte.confirmDelete)) return;
     try {
-      await apiProjekte.loeschen(id);
+      await apiProjects.loeschen(id);
       reloadProjekte();
       reloadAufgaben();
     } catch {}

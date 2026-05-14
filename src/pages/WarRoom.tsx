@@ -8,7 +8,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useCompany } from '../hooks/useCompany';
 import { useI18n } from '../i18n';
-import { apiDashboard, type DashboardData } from '../api/client';
+import { apiDashboard } from '@/api/dashboard';
+import type { DashboardData } from '@/api/types';
 import { GlassCard } from '../components/GlassCard';
 import { translateTrace } from '../utils/translateTrace';
 

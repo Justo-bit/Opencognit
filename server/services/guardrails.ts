@@ -14,6 +14,7 @@
 import { db } from '../db/client.js';
 import { traceEvents } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { runSemanticValidation } from './guardrails/semantic-validator.js';
 
 export interface GuardrailViolation {
   layer: 1 | 2 | 3;
@@ -195,61 +196,17 @@ function runLayer2(output: string, config: GuardrailConfig): GuardrailViolation[
   return violations;
 }
 
-// ─── Layer 3: Semantic Validation (LLM-based, expensive) ────────────────────
+// ─── Layer 3: Semantic Validation (real implementation) ─────────────────────
 
 function runLayer3(output: string, config: GuardrailConfig): GuardrailViolation[] {
-  const violations: GuardrailViolation[] = [];
+  // Use the new semantic validator for real groundedness + consistency checks
+  const semanticResult = runSemanticValidation(output, {
+    checkGroundedness: config.checkGroundedness,
+    checkConsistency: config.checkConsistency,
+    factConfidenceThreshold: config.minConfidence ? config.minConfidence : 0.4,
+  });
 
-  // Confidence calibration: check if output is overly vague or uncertain
-  if (config.minConfidence) {
-    const uncertaintyPatterns = [
-      /\b(maybe|perhaps|possibly|might|could be|i think|i guess|not sure|unclear)\b/gi,
-      /\b(i don't know|i'm not certain|it's hard to say)\b/gi,
-    ];
-
-    let uncertaintyCount = 0;
-    for (const pattern of uncertaintyPatterns) {
-      const matches = output.match(pattern);
-      if (matches) uncertaintyCount += matches.length;
-    }
-
-    const uncertaintyRatio = uncertaintyCount / (output.split(/\s+/).length || 1);
-    if (uncertaintyRatio > 0.15) {
-      violations.push({
-        layer: 3,
-        severity: 'medium',
-        type: 'low_confidence_output',
-        message: `Output contains high uncertainty (${Math.round(uncertaintyRatio * 100)}% hedge words). Confidence threshold: ${config.minConfidence}`,
-        suggestedFix: 'Be more decisive or ask for clarification instead of guessing',
-      });
-    }
-  }
-
-  // Internal consistency check: look for contradictions
-  if (config.checkConsistency) {
-    const contradictionPatterns = [
-      /\b(not .{0,30}but)\b/i,
-      /\b(however|but|although|though)\b/gi,
-    ];
-
-    let contradictionCount = 0;
-    for (const pattern of contradictionPatterns) {
-      const matches = output.match(pattern);
-      if (matches) contradictionCount += matches.length;
-    }
-
-    if (contradictionCount > 3) {
-      violations.push({
-        layer: 3,
-        severity: 'low',
-        type: 'potential_contradiction',
-        message: `Multiple contradiction markers detected (${contradictionCount}). Review for consistency.`,
-        suggestedFix: 'Review and resolve contradictions in reasoning',
-      });
-    }
-  }
-
-  return violations;
+  return semanticResult.violations;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────

@@ -10,7 +10,9 @@ import {
 import { useCompany } from '../hooks/useCompany';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useI18n } from '../i18n';
-import { apiAufgaben, apiExperten, type Aufgabe, type Experte, type Aktivitaet } from '../api/client';
+import { apiTasks } from '@/api/tasks';
+import { apiAgents } from '@/api/agents';
+import type { Aufgabe, Experte, Aktivitaet } from '@/api/types';
 import { translateActivity } from '../utils/activityTranslator';
 import { useToast } from './ToastProvider';
 import { Select } from './Select';
@@ -523,7 +525,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
     if (!expert.id) return;
 
     // Fetch all experts for dropdowns
-    apiExperten.liste(expert.unternehmenId)
+    apiAgents.liste(expert.unternehmenId)
       .then(list => setAllExperts(list))
       .catch(() => {});
 
@@ -691,7 +693,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
       .catch(() => setLoadingChat(false));
 
     // Tasks
-    apiAufgaben.liste(aktivesUnternehmen.id)
+    apiTasks.liste(aktivesUnternehmen.id)
       .then(all => { setTasks(all.filter(t => t.zugewiesenAn === expert.id)); setLoadingTasks(false); })
       .catch(() => setLoadingTasks(false));
 
@@ -749,7 +751,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   // Load Aktivität initial and when component mounts
   useEffect(() => {
     setLoadingAktivitaet(true);
-    apiExperten.aktivitaet(expert.id, 100)
+    apiAgents.aktivitaet(expert.id, 100)
       .then(data => { setAktivitaet(data); setLoadingAktivitaet(false); })
       .catch(() => setLoadingAktivitaet(false));
   }, [expert.id]);
@@ -1027,10 +1029,10 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const handlePauseResume = async () => {
     try {
       if (expert.status === 'paused') {
-        await apiExperten.fortsetzen(expert.id);
+        await apiAgents.fortsetzen(expert.id);
         setExpert(prev => ({ ...prev, status: 'idle' }));
       } else {
-        await apiExperten.pausieren(expert.id);
+        await apiAgents.pausieren(expert.id);
         setExpert(prev => ({ ...prev, status: 'paused' }));
       }
     } catch {}
@@ -1041,7 +1043,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
     setSaveError(null);
     setSaveSuccess(false);
     try {
-      const updated = await apiExperten.aktualisieren(expert.id, {
+      const updated = await apiAgents.aktualisieren(expert.id, {
         name: editForm.name,
         rolle: editForm.rolle,
         titel: editForm.titel,
@@ -1117,7 +1119,7 @@ export function ExpertChatDrawer({ expert: initialExpert, onClose, onDeleted, on
   const handleDelete = async () => {
     setDeleteError(null);
     try {
-      await apiExperten.loeschen(expert.id);
+      await apiAgents.loeschen(expert.id);
       toastCtx.info(
         de ? `${expert.name} entlassen` : `${expert.name} dismissed`,
         de ? 'Agent und alle zugehörigen Daten wurden gelöscht' : 'Agent and all associated data have been deleted',

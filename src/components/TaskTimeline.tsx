@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useCallback } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
-import type { Aufgabe, Experte } from '../api/client';
+import type { Aufgabe, Experte } from '@/api/types';
 
 const STATUS_COLORS: Record<string, string> = {
   backlog: '#52525b',

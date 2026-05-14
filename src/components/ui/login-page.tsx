@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from "@/hooks/useAuth";
-import { ApiError } from "@/api/client";
+import { ApiError } from "@/api/core";
 import { Sparkles, Cpu, Shield, Zap } from "lucide-react";
 import { useI18n } from "@/i18n";
 

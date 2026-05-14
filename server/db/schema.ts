@@ -832,6 +832,27 @@ export const memoryConflicts = sqliteTable('memory_conflicts', {
   idxUnternehmenStatus: index('mem_conflict_unternehmen_status_idx').on(t.companyId, t.status),
 }));
 
+// ===== Agent-to-Agent Messages (A2A Message Bus) =====
+export const agentMessages = sqliteTable('agent_messages', {
+  id: text('id').primaryKey(),
+  companyId: text('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  senderId: text('sender_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  recipientId: text('recipient_id').references(() => agents.id, { onDelete: 'cascade' }),
+  channel: text('channel'),
+  threadId: text('thread_id'),
+  type: text('type', { enum: ['direct', 'broadcast', 'channel', 'request', 'response'] }).notNull().default('direct'),
+  payload: text('payload').notNull(), // JSON: { text, metadata?, urgency? }
+  readAt: text('read_at'),
+  createdAt: text('created_at').notNull(),
+}, (t) => ({
+  idxCompany: index('agent_msg_company_idx').on(t.companyId),
+  idxSender: index('agent_msg_sender_idx').on(t.senderId),
+  idxRecipient: index('agent_msg_recipient_idx').on(t.recipientId),
+  idxThread: index('agent_msg_thread_idx').on(t.threadId),
+  idxChannel: index('agent_msg_channel_idx').on(t.channel),
+  idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
+}));
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -845,6 +866,7 @@ export const allTables = {
   tasks,
   comments,
   chatMessages,
+  agentMessages,
   agentMeetings,
   approvals,
   costEntries,

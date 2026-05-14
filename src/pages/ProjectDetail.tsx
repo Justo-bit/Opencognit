@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Loader2, ArrowLeft, Pencil, Calendar, User, BarChart2, FolderOpen,
 } from 'lucide-react';
-import {
-  apiProjekte, apiExperten,
-  type Projekt, type Aufgabe, type Experte, ApiError,
-} from '../api/client';
+import { apiProjects } from '@/api/projects';
+import { apiAgents } from '@/api/agents';
+import { ApiError } from '@/api/core';
+import type { Projekt, Aufgabe, Experte } from '@/api/types';
 import { GlassCard } from '../components/GlassCard';
 import { StatusBadge } from '../components/StatusBadge';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
@@ -69,11 +69,11 @@ export function ProjectDetail() {
       setNotFound(false);
 
       try {
-        const proj = (await apiProjekte.details(projectId)) as ProjectDetail;
+        const proj = (await apiProjects.details(projectId)) as ProjectDetail;
         if (cancelled) return;
         setProject(proj);
 
-        const exps = await apiExperten.liste(proj.unternehmenId);
+        const exps = await apiAgents.liste(proj.unternehmenId);
         if (cancelled) return;
         setExperts(exps);
       } catch (e: any) {
