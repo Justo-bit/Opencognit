@@ -5,7 +5,10 @@ import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import { apiKosten, apiBudget, apiExperten, type KostenZusammenfassung, type ProviderKosten, type TimelineTag, type BudgetPolicy, type BudgetIncident, type Experte, type BudgetForecast } from '../api/client';
+import { apiCosts } from '@/api/costs';
+import { apiBudget } from '@/api/budget';
+import { apiAgents } from '@/api/agents';
+import type { KostenZusammenfassung, ProviderKosten, TimelineTag, BudgetPolicy, BudgetIncident, Experte, BudgetForecast } from '@/api/types';
 import { GlassCard } from '../components/GlassCard';
 
 function centZuEuro(cent: number, currency: 'EUR' | 'USD' = 'EUR'): string {
@@ -44,13 +47,13 @@ export function Costs() {
   const [newPolicyWarn, setNewPolicyWarn] = useState(80);
 
   const { data, loading } = useApi<KostenZusammenfassung>(
-    () => apiKosten.zusammenfassung(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiCosts.zusammenfassung(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
   const { data: providerData } = useApi<ProviderKosten[]>(
-    () => apiKosten.nachProvider(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiCosts.nachProvider(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
   const { data: timelineData } = useApi<TimelineTag[]>(
-    () => apiKosten.timeline(aktivesUnternehmen!.id, 14), [aktivesUnternehmen?.id]
+    () => apiCosts.timeline(aktivesUnternehmen!.id, 14), [aktivesUnternehmen?.id]
   );
   const { data: policies, reload: reloadPolicies } = useApi<BudgetPolicy[]>(
     () => apiBudget.policies(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
@@ -62,7 +65,7 @@ export function Costs() {
     () => apiBudget.forecast(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
   const { data: alleExperten } = useApi<Experte[]>(
-    () => apiExperten.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiAgents.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
 
   if (!aktivesUnternehmen) return null;

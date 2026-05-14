@@ -6,7 +6,9 @@ import { useI18n } from '../i18n';
 import { zeitRelativ } from '../utils/i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import { apiGenehmigungen, apiExperten, type Genehmigung, type Experte } from '../api/client';
+import { apiApprovals } from '@/api/approvals';
+import { apiAgents } from '@/api/agents';
+import type { Genehmigung, Experte } from '@/api/types';
 import { GlassCard } from '../components/GlassCard';
 
 export function Approvals() {
@@ -34,10 +36,10 @@ export function Approvals() {
   };
 
   const { data: alle, loading, reload } = useApi<Genehmigung[]>(
-    () => apiGenehmigungen.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiApprovals.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
   const { data: experts } = useApi<Experte[]>(
-    () => apiExperten.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiAgents.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
 
   // Auto-reload when approval status changes (e.g. via Telegram)
@@ -70,7 +72,7 @@ export function Approvals() {
 
     if (genehmigung?.typ === 'hire_expert' && genehmigung.payload) {
       const { rolle, budgetMonatCent, faehigkeiten, verbindungsTyp } = genehmigung.payload;
-      await apiExperten.erstellen(aktivesUnternehmen.id, {
+      await apiAgents.erstellen(aktivesUnternehmen.id, {
         name: `New ${rolle}`,
         rolle,
         titel: rolle,
@@ -82,12 +84,12 @@ export function Approvals() {
       });
     }
 
-    await apiGenehmigungen.genehmigen(id);
+    await apiApprovals.genehmigen(id);
     reload();
   };
 
   const handleAblehnen = async (id: string) => {
-    await apiGenehmigungen.ablehnen(id);
+    await apiApprovals.ablehnen(id);
     reload();
   };
 

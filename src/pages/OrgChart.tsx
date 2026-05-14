@@ -8,7 +8,8 @@ import { useI18n } from '../i18n';
 import { zeitRelativ } from '../utils/i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import { apiExperten, type Experte } from '../api/client';
+import { apiAgents } from '@/api/agents';
+import type { Experte } from '@/api/types';
 import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 
 const ROLE_ICONS: Record<string, any> = {
@@ -508,7 +509,7 @@ export function OrgChart() {
   }, [canvasEl]);
 
   const { data: experts, loading, reload } = useApi<Experte[]>(
-    () => apiExperten.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiAgents.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
 
   if (!aktivesUnternehmen) return null;

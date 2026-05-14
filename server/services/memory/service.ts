@@ -30,6 +30,8 @@ import {
 } from '../learned-skills.js';
 import { consolidateAll } from '../memory-consolidation.js';
 
+import { hierarchicalRecall } from './hierarchy.js';
+
 import type {
   RecallParams, RecallResult,
   RememberParams,
@@ -61,6 +63,36 @@ export const memoryService = {
       scope = {},
       limits = {},
     } = params;
+
+    // ── Hierarchical RAG path (Phase 1) ──────────────────────────────────────
+    // When scope.hierarchical is true, use the new multi-layer engine with
+    // RRF fusion + temporal decay. Otherwise fall back to legacy palace path.
+    if ((scope as any).hierarchical) {
+      try {
+        const hr = await hierarchicalRecall({
+          agentId,
+          companyId,
+          query,
+          layers: (scope as any).layers,
+          perLayerLimit: (scope as any).perLayerLimit ?? 8,
+          topK: (scope as any).topK ?? 10,
+          recencyBoost: (scope as any).recencyBoost ?? 0.5,
+          apiKey: (scope as any).apiKey,
+        });
+        return {
+          contextMarkdown: hr.contextMarkdown,
+          sources: {
+            palaceContext: hr.entries.some(e => e.layer === 'working' || e.layer === 'episodic'),
+            learnedSkills: hr.entries.filter(e => e.source === 'learnedSkill').length,
+          },
+        };
+      } catch (e: any) {
+        console.warn(`[memory.recall] hierarchical fallback to legacy: ${e?.message}`);
+        // Fall through to legacy path
+      }
+    }
+
+    // ── Legacy recall path ───────────────────────────────────────────────────
     const wantPalace        = scope.palace        ?? true;
     const wantLearnedSkills = scope.learnedSkills ?? true;
     const learnedLimit      = limits.learnedSkills ?? 3;
@@ -84,8 +116,6 @@ export const memoryService = {
     // 2. Learned skills (cross-agent reusable recipes)
     if (wantLearnedSkills) {
       try {
-        // findRelevantLearnedSkills expects task title + description; fall back
-        // to the raw query string when caller didn't split them up.
         const relevant = findRelevantLearnedSkills({
           companyId,
           taskTitle: query,

@@ -4,7 +4,7 @@ import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 import { StatusBadge } from '../components/StatusBadge';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
-import { apiUnternehmen } from '../api/client';
+import { apiCompanies } from '@/api/companies';
 
 function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const i18n = useI18n();
@@ -18,7 +18,7 @@ function NewCompanyModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
     setSaving(true);
     setError(null);
     try {
-      await apiUnternehmen.erstellen({ name: name.trim(), ziel: ziel.trim() || undefined });
+      await apiCompanies.erstellen({ name: name.trim(), ziel: ziel.trim() || undefined });
       onSaved();
     } catch (e: any) {
       setError(e.message || (i18n.language === 'de' ? 'Fehler beim Erstellen' : 'Error creating company'));
@@ -154,7 +154,7 @@ export function Companies() {
     if (!confirmed) return;
     setDeletingId(id);
     try {
-      await apiUnternehmen.loeschen(id);
+      await apiCompanies.loeschen(id);
       // If deleted company was the active one, clear it
       if (aktivesUnternehmen?.id === id) setAktivesUnternehmenId('');
       reload?.();

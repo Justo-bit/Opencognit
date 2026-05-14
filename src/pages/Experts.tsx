@@ -13,7 +13,9 @@ import { useI18n } from '../i18n';
 import { zeitRelativ } from '../utils/i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import { apiExperten, apiDashboard, type Experte as ExperteType, type DashboardData } from '../api/client';
+import { apiAgents } from '@/api/agents';
+import { apiDashboard } from '@/api/dashboard';
+import type { Experte as ExperteType, DashboardData } from '@/api/types';
 import { ExpertModal } from '../components/ExpertModal';
 import { ExpertChatDrawer } from '../components/ExpertChatDrawer';
 import { useToast } from '../components/ToastProvider';
@@ -341,7 +343,7 @@ export function Experts() {
   useBreadcrumbs([aktivesUnternehmen?.name ?? '', i18n.t.nav.experten]);
 
   const { data: alleExperten, loading, reload } = useApi<ExperteType[]>(
-    () => apiExperten.liste(aktivesUnternehmen!.id),
+    () => apiAgents.liste(aktivesUnternehmen!.id),
     [aktivesUnternehmen?.id],
   );
 

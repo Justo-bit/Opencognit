@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiHealth, apiUnternehmen } from '../api/client';
+import { apiHealth } from '@/api/health';
+import { apiCompanies } from '@/api/companies';
 import { queryKeys } from '../lib/queryKeys';
 
 export function useSystemStatus() {
@@ -36,7 +37,7 @@ export function useSystemStatus() {
 
         // Logged in: check if setup is needed (no companies)
         try {
-          const unternehmen = await apiUnternehmen.liste();
+          const unternehmen = await apiCompanies.liste();
           return {
             needsSetup: unternehmen.length === 0,
             brauchtRegistrierung: false,

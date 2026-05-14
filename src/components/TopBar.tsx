@@ -4,7 +4,7 @@ import { Search, Bell, Cpu, CheckCircle2, AlertCircle, MessageSquare, Play, X, C
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n';
 import { useCompany } from '../hooks/useCompany';
-import { apiGenehmigungen } from '../api/client';
+import { apiApprovals } from '@/api/approvals';
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs';
 
 interface Notification {
@@ -89,7 +89,7 @@ export function TopBar({ breadcrumb, onSearchClick }: TopBarProps) {
   // Load pending approvals as notifications on mount
   useEffect(() => {
     if (!aktivesUnternehmen?.id) return;
-    apiGenehmigungen.liste(aktivesUnternehmen.id)
+    apiApprovals.liste(aktivesUnternehmen.id)
       .then(list => {
         const pending = list.filter(g => g.status === 'pending');
         if (pending.length > 0) {

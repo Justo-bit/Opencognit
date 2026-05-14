@@ -7,7 +7,8 @@ import { zeitRelativ } from '../utils/i18n';
 import { translateActivity } from '../utils/activityTranslator';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import { apiAktivitaet, type Aktivitaet as AktivitaetType } from '../api/client';
+import { apiActivity } from '@/api/activity';
+import type { Aktivitaet as AktivitaetType } from '@/api/types';
 import { GlassCard } from '../components/GlassCard';
 
 const typFarben: Record<string, string> = {
@@ -215,7 +216,7 @@ export function Activity() {
 
   // Fetch with higher limit for heatmap data (covers ~30 days easily)
   const { data, loading } = useApi<AktivitaetType[]>(
-    () => apiAktivitaet.liste(aktivesUnternehmen!.id, 1000),
+    () => apiActivity.liste(aktivesUnternehmen!.id, 1000),
     [aktivesUnternehmen?.id],
   );
 

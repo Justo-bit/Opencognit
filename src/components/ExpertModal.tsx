@@ -4,7 +4,9 @@ import {
   UserCheck, BookOpen, CheckCircle2, Globe, Search, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import { useCompany } from '../hooks/useCompany';
-import { apiPermissions, apiExperten, type Experte as ExperteType } from '../api/client';
+import { apiPermissions } from '@/api/agents';
+import { apiAgents } from '@/api/agents';
+import type { Experte as ExperteType } from '@/api/types';
 import { Select } from './Select';
 import { useApi } from '../hooks/useApi';
 import { useI18n } from '../i18n';
@@ -179,7 +181,7 @@ export function ExpertModal({ expert, onClose, onSaved, isOpen = true }: {
 
   // Data for dropdowns
   const { data: alleExperten } = useApi<ExperteType[]>(
-    () => apiExperten.liste(aktivesUnternehmen?.id || ''),
+    () => apiAgents.liste(aktivesUnternehmen?.id || ''),
     [aktivesUnternehmen?.id]
   );
 
@@ -530,7 +532,7 @@ export function ExpertModal({ expert, onClose, onSaved, isOpen = true }: {
     if (!confirmed) return;
     setSaving(true);
     try {
-      const res = await apiExperten.loeschen(expert.id);
+      const res = await apiAgents.loeschen(expert.id);
       if (res.success) {
         onSaved();
       } else {

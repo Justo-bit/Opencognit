@@ -10,7 +10,9 @@ import { useI18n } from '../i18n';
 import { zeitRelativ } from '../utils/i18n';
 import { useCompany } from '../hooks/useCompany';
 import { useApi } from '../hooks/useApi';
-import { apiAufgaben, apiExperten, type Aufgabe, type Experte } from '../api/client';
+import { apiTasks } from '@/api/tasks';
+import { apiAgents } from '@/api/agents';
+import type { Aufgabe, Experte } from '@/api/types';
 import { TaskModal } from '../components/TaskModal';
 import { TaskDetailDrawer } from '../components/TaskDetailDrawer';
 import { TimelineView } from '../components/TaskTimeline';
@@ -42,10 +44,10 @@ export function Tasks() {
   ];
 
   const { data: alleAufgaben, loading: loadingA, reload: reloadAufgaben } = useApi<Aufgabe[]>(
-    () => apiAufgaben.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiTasks.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
   const { data: alleExperten, loading: loadingM } = useApi<Experte[]>(
-    () => apiExperten.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
+    () => apiAgents.liste(aktivesUnternehmen!.id), [aktivesUnternehmen?.id]
   );
 
   // DnD state

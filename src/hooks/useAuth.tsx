@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '../lib/auth';
-import { apiAuth, type Benutzer } from '../api/client';
+import { apiAuth } from '@/api/auth';
+import type { Benutzer } from '@/api/types';
 import { queryKeys } from '../lib/queryKeys';
 
 interface AuthContextType {

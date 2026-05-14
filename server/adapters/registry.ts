@@ -12,6 +12,7 @@ import { EmailAdapter } from './email.js';
 import { BrowserAdapter } from './browser.js';
 import { createLLMWrapper } from './llm-wrapper.js';
 import { loadAdapterPlugins, type LoadedAdapterPlugin } from './plugin-loader.js';
+import { failoverRouter, healthMonitor } from '../services/resilience/index.js';
 
 export class AdapterRegistry {
   private adapters: Map<string, Adapter> = new Map();
@@ -93,7 +94,36 @@ export class AdapterRegistry {
   }
 
   /**
-   * Führt eine Aufgabe mit dem passenden Adapter aus
+   * Fallback chain per LLM provider for automatic failover.
+   * Ordered: primary → first fallback → second fallback → ...
+   */
+  private providerFallbackChain: Record<string, string[]> = {
+    openrouter: ['anthropic', 'openai', 'ollama'],
+    anthropic: ['openrouter', 'openai', 'ollama'],
+    openai: ['openrouter', 'anthropic', 'ollama'],
+    ollama: ['openrouter', 'anthropic', 'openai'],
+    claude: ['anthropic', 'openrouter', 'openai'],
+    moonshot: ['openrouter', 'anthropic', 'openai'],
+    google: ['openrouter', 'anthropic', 'openai'],
+    poe: ['openrouter', 'anthropic', 'openai'],
+  };
+
+  /**
+   * Register providers for health monitoring and circuit breaker tracking.
+   * Call once at server startup after settings are loaded.
+   */
+  initResilience(): void {
+    const llmProviders = Object.keys(this.providerFallbackChain);
+    for (const providerId of llmProviders) {
+      healthMonitor.registerProvider(providerId);
+    }
+    healthMonitor.start(60000, 10000);
+    console.log(`[Resilience] Monitoring ${llmProviders.length} LLM providers with health checks`);
+  }
+
+  /**
+   * Führt eine Aufgabe mit dem passenden Adapter aus.
+   * For LLM adapters, automatically fails over to backup providers on transient errors.
    */
   async executeTask(
     task: AdapterTask,
@@ -101,24 +131,27 @@ export class AdapterRegistry {
     config: AdapterConfig
   ): Promise<AdapterExecutionResult> {
     let adapter = this.selectAdapter(task);
-    
+    let connectionType = config.connectionType;
+    const isLlmAdapter = connectionType &&
+      !['bash', 'http', 'claude-code', 'codex-cli', 'gemini-cli', 'kimi-cli', 'browser', 'email'].includes(connectionType);
+
     // Wenn verbindungsTyp gesetzt ist, versuche zuerst registrierte Adapter, dann LLM-Wrapper
-    if (config.connectionType && config.connectionType !== 'bash' && config.connectionType !== 'http') {
+    if (connectionType && connectionType !== 'bash' && connectionType !== 'http') {
       // CLI-Subscription-Adapter haben Vorrang (direkt registriert)
-      const directAdapter = this.adapters.get(config.connectionType);
+      const directAdapter = this.adapters.get(connectionType);
       if (directAdapter) {
         adapter = directAdapter;
-        console.log(`Using registered adapter: ${config.connectionType} für Aufgabe: ${task.title}`);
+        console.log(`Using registered adapter: ${connectionType} für Aufgabe: ${task.title}`);
       } else {
         // Fallback: LLM-Wrapper für API-Key-basierte Adapter
-        const llmAdapter = createLLMWrapper(config.connectionType);
+        const llmAdapter = createLLMWrapper(connectionType);
         if (llmAdapter) {
           adapter = llmAdapter;
-          console.log(`Using LLM wrapper adapter: ${config.connectionType} für Aufgabe: ${task.title}`);
+          console.log(`Using LLM wrapper adapter: ${connectionType} für Aufgabe: ${task.title}`);
         }
       }
     }
-    
+
     if (!adapter) {
       return {
         success: false,
@@ -138,12 +171,66 @@ export class AdapterRegistry {
       this.initializedAdapters.add(adapter.name);
     }
 
+    // For non-LLM adapters: simple execution without resilience wrapping
+    if (!isLlmAdapter || !connectionType) {
+      try {
+        return await adapter.execute(task, context, config);
+      } finally {
+        if (adapter.cleanup) {
+          await adapter.cleanup(config).catch(console.error);
+        }
+      }
+    }
+
+    // ── LLM Resilience Path: Circuit Breaker + Failover ──────────────────────
+    const fallbackChain = this.providerFallbackChain[connectionType] || [];
+
     try {
-      // Execute the task
-      const result = await adapter.execute(task, context, config);
+      const result = await failoverRouter.executeWithFailover(
+        connectionType,
+        fallbackChain,
+        async (providerId) => {
+          // Create a new adapter for this provider
+          const resilientAdapter = createLLMWrapper(providerId);
+          if (!resilientAdapter) {
+            throw new Error(`No adapter available for provider ${providerId}`);
+          }
+          // Execute with the failover provider
+          const resilientConfig = { ...config, connectionType: providerId };
+          return resilientAdapter.execute(task, context, resilientConfig);
+        },
+        {
+          onFailover: (decision, error) => {
+            console.warn(
+              `[AdapterRegistry] Failover for task "${task.title}": ` +
+              `${decision.originalProvider?.providerId} → ${decision.providerId}. ` +
+              `Reason: ${decision.reason}. Error: ${error.message || error.status}`
+            );
+          },
+          onSuccess: (decision, result) => {
+            if (decision.isFailover) {
+              console.log(
+                `[AdapterRegistry] Failover succeeded for task "${task.title}": ` +
+                `executed via ${decision.providerId}`
+              );
+            }
+          },
+        },
+      );
       return result;
+    } catch (error: any) {
+      // All providers in chain failed
+      return {
+        success: false,
+        output: '',
+        exitCode: 1,
+        inputTokens: 0,
+        outputTokens: 0,
+        costCents: 0,
+        durationMs: 0,
+        error: `All LLM providers failed for task "${task.title}". Last error: ${error.message || error.status || error}`,
+      };
     } finally {
-      // Cleanup if adapter has cleanup method
       if (adapter.cleanup) {
         await adapter.cleanup(config).catch(console.error);
       }

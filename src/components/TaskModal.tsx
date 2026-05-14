@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Users, Sparkles, Loader2 } from 'lucide-react';
 import { useCompany } from '../hooks/useCompany';
 import { useI18n } from '../i18n';
-import type { Experte } from '../api/client';
+import type { Experte } from '@/api/types';
 import { Select } from './Select';
 import { ModalShell, FieldLabel, inputStyle, inputFocus, textareaStyle, btnPrimary, btnPrimaryHover, btnSecondary, btnSecondaryHover, ErrorBox } from './ModalShell';
 

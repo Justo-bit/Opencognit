@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { Select } from './Select';
-import type { Aufgabe, Experte, Kommentar } from '../api/client';
+import type { Aufgabe, Experte, Kommentar } from '@/api/types';
 
 interface WorkProduct {
   id: string;
