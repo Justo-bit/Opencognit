@@ -13,6 +13,7 @@
 // =============================================================================
 
 import { Router } from 'express';
+import { type AuthRequest } from '../middleware/auth.js';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 import { eq, and, or, desc, sql, count, inArray, isNotNull, isNull } from 'drizzle-orm';
@@ -50,6 +51,7 @@ import {
   palaceDiary,
   palaceSummaries,
   palaceKg,
+  settings,
 } from '../db/schema.js';
 import { wakeupService } from '../services/wakeup.js';
 import { messagingService } from '../services/messaging.js';
@@ -62,6 +64,22 @@ import {
   requireResourceAccess,
   deriveAgentToken,
 } from '../middleware/auth.js';
+import { bootstrapCompany } from '../services/company-bootstrap.js';
+import { encryptSetting } from '../utils/crypto.js';
+import {
+  startExecution,
+  killExecution,
+  killAgentExecutions,
+  checkCliHealth,
+} from '../services/cli-executor.js';
+import { resolveCliPath } from '../adapters/cli-paths.js';
+import {
+  createResearchRun,
+  runDeepResearch,
+  loadRun,
+  listRuns,
+  deleteRun,
+} from '../services/deep-research.js';
 
 const router = Router();
 const now = () => new Date().toISOString();
@@ -248,7 +266,7 @@ router.patch('/api/agents/:id', requireResourceAccess('agent'), (req, res) => {
       id: uuid(),
       agentId: req.params.id,
       changedAt: now(),
-      changedBy: (req as any).user?.id || 'board',
+      changedBy: (req as AuthRequest).user?.id || 'board',
       configJson: JSON.stringify(changedFields),
       note: req.body._note || null,
     } as any).run();
@@ -301,7 +319,7 @@ router.post('/api/agents/:id/config-history/:historyId/restore', authMiddleware,
     id: uuid(),
     agentId: req.params.id,
     changedAt: now(),
-    changedBy: (req as any).user?.id || 'board',
+    changedBy: (req as AuthRequest).user?.id || 'board',
     configJson: JSON.stringify(safeFields),
     note: `Restored from snapshot ${req.params.historyId}`,
   } as any).run();
@@ -574,7 +592,7 @@ router.get('/api/companies/:id/performance/leaderboard', requireCompanyAccess(),
 // Inbox — agent fetches assigned tasks
 router.get('/api/agents/:id/inbox', requireResourceAccess('agent'), (req, res) => {
   const expertId = req.params.id as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.query.unternehmenId) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || req.query.unternehmenId) as string;
 
   if (!unternehmenId) {
     return res.status(400).json({ error: 'unternehmenId query parameter is required' });
@@ -625,7 +643,7 @@ router.get('/api/agents/:id/inbox', requireResourceAccess('agent'), (req, res) =
 // Team-status — orchestrator fetches team overview
 router.get('/api/agents/:id/team-status', authMiddleware, requireResourceAccess('agent'), (req, res) => {
   const expertId = req.params.id as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
 
   if (!unternehmenId) return res.status(400).json({ error: 'unternehmenId header required' });
 
@@ -689,6 +707,70 @@ router.get('/api/agents/:id/team-status', authMiddleware, requireResourceAccess(
   res.json({ team, unassigned });
 });
 
+// Reset agent memory — clears palace, embeddings, checkpoints, wakeups
+router.post('/api/agents/:id/reset-memory', authMiddleware, requireResourceAccess('agent'), async (req, res) => {
+  const expertId = req.params.id as string;
+  const unternehmenId = req.unternehmenId as string;
+
+  try {
+    // Find wings belonging to this agent
+    const wings = db.select({ id: palaceWings.id })
+      .from(palaceWings)
+      .where(and(eq(palaceWings.agentId, expertId), eq(palaceWings.companyId, unternehmenId)))
+      .all();
+    const wingIds = wings.map(w => w.id);
+
+    // Delete palace contents
+    if (wingIds.length > 0) {
+      db.delete(palaceDiary).where(inArray(palaceDiary.wingId, wingIds)).run();
+      db.delete(palaceDrawers).where(inArray(palaceDrawers.wingId, wingIds)).run();
+    }
+
+    db.delete(palaceSummaries)
+      .where(and(eq(palaceSummaries.agentId, expertId), eq(palaceSummaries.companyId, unternehmenId)))
+      .run();
+
+    db.delete(palaceKg)
+      .where(and(eq(palaceKg.companyId, unternehmenId), eq(palaceKg.createdBy, expertId)))
+      .run();
+
+    db.delete(memoryEmbeddings).where(eq(memoryEmbeddings.agentId, expertId)).run();
+    db.delete(taskCheckpoints).where(eq(taskCheckpoints.agentId, expertId)).run();
+    db.delete(workCyclesArchive).where(eq(workCyclesArchive.agentId, expertId)).run();
+    db.delete(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, expertId)).run();
+
+    // Reset agent state
+    db.update(agents)
+      .set({ soulVersion: null, status: 'idle', updatedAt: now() })
+      .where(eq(agents.id, expertId))
+      .run();
+
+    // Clear in-memory SOUL cache
+    const agentRow = db.select({ soulPath: agents.soulPath })
+      .from(agents)
+      .where(eq(agents.id, expertId))
+      .get();
+    if (agentRow?.soulPath) {
+      const { soulCache } = await import('../services/heartbeat/utils.js');
+      soulCache.delete(agentRow.soulPath);
+    }
+
+    logAktivitaet({
+      unternehmenId,
+      typ: 'agent_memory_reset',
+      titel: 'Agent memory reset',
+      details: `Cleared memory for agent ${expertId}`,
+      meta: { expertId },
+    });
+    broadcast('agent_memory_reset', { expertId, unternehmenId });
+
+    res.json({ ok: true, message: 'Agent memory cleared. The agent will rebuild context on next wakeup.' });
+  } catch (err: any) {
+    console.error('❌ reset-memory error:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Failed to reset memory' });
+  }
+});
+
 // Stats — last-30-days overview for an agent's run history + tasks
 router.get('/api/agents/:id/stats', authMiddleware, requireResourceAccess('agent'), (req, res) => {
   const expertId = req.params.id as string;
@@ -730,6 +812,225 @@ router.get('/api/agents/:id/stats', authMiddleware, requireResourceAccess('agent
     latestRun: latestRunResult,
     recentTasks,
   });
+});
+
+// Bootstrap a company from chat — creates CEO + team + initial tasks
+router.post('/api/companies/:id/bootstrap', authMiddleware, requireCompanyAccess(), async (req, res) => {
+  const companyId = req.params.id as string;
+  const { goal, provider, apiKey } = req.body as { goal?: string; provider?: string; apiKey?: string };
+
+  if (!goal || goal.trim().length < 3) {
+    return res.status(400).json({ ok: false, error: 'Goal is required (min 3 chars)' });
+  }
+
+  try {
+    // Optionally store API key in settings
+    if (apiKey && provider) {
+      const keyMap: Record<string, string> = {
+        openrouter: 'openrouter_api_key',
+        anthropic: 'anthropic_api_key',
+        openai: 'openai_api_key',
+        google: 'google_api_key',
+        moonshot: 'moonshot_api_key',
+        poe: 'poe_api_key',
+      };
+      const settingKey = keyMap[provider];
+      if (settingKey) {
+        const existing = db.select().from(settings)
+          .where(and(eq(settings.companyId, companyId), eq(settings.key, settingKey)))
+          .get();
+        const encrypted = encryptSetting(apiKey);
+        if (existing) {
+          db.update(settings).set({ value: encrypted, updatedAt: now() })
+            .where(eq(settings.id, existing.id)).run();
+        } else {
+          db.insert(settings).values({
+            id: uuid(), companyId, key: settingKey, value: encrypted, createdAt: now(), updatedAt: now(),
+          }).run();
+        }
+      }
+    }
+
+    const result = bootstrapCompany({
+      companyId,
+      userGoal: goal.trim(),
+      apiProvider: provider || 'openrouter',
+      preferredLanguage: (req as AuthRequest).language || 'de',
+    });
+
+    if (!result.success) {
+      return res.status(500).json({ ok: false, error: result.error || 'Bootstrap failed' });
+    }
+
+    logAktivitaet({
+      unternehmenId: companyId,
+      typ: 'company_bootstrap',
+      titel: 'Company bootstrapped from chat',
+      details: `Goal: ${goal.slice(0, 100)}`,
+      meta: { goal, agentsCreated: result.createdAgents.length },
+    });
+    broadcast('company_bootstrapped', { companyId, agents: result.createdAgents, projects: result.createdProjects, tasks: result.createdTasks });
+
+    res.json({
+      ok: true,
+      ceoId: result.ceoId,
+      agents: result.createdAgents,
+      projects: result.createdProjects,
+      tasks: result.createdTasks,
+    });
+  } catch (err: any) {
+    console.error('❌ Bootstrap endpoint error:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Bootstrap failed' });
+  }
+});
+
+// =============================================================================
+// AGENT TERMINAL — Live bash execution with SSE streaming
+// =============================================================================
+
+// Start a live bash execution and stream output via SSE
+router.post('/api/agents/:id/execute', authMiddleware, requireResourceAccess('agent'), async (req, res) => {
+  const agentId = req.params.id as string;
+  const { command } = req.body as { command?: string };
+  const companyId = (req as AuthRequest).resolvedCompanyId as string;
+
+  if (!command || !command.trim()) {
+    return res.status(400).json({ error: 'command is required' });
+  }
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.flushHeaders();
+
+  // Send initial event
+  res.write(`event: start\ndata: ${JSON.stringify({ command: command.trim() })}\n\n`);
+
+  const result = startExecution(
+    agentId,
+    companyId,
+    undefined, // workspacePath — will resolve to default
+    command.trim(),
+    {
+      onData: (chunk) => {
+        res.write(`event: stdout\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+      },
+      onError: (chunk) => {
+        res.write(`event: stderr\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+      },
+      onExit: (code, durationMs) => {
+        res.write(`event: exit\ndata: ${JSON.stringify({ code, durationMs })}\n\n`);
+        res.end();
+      },
+    },
+  );
+
+  if (result.alreadyRunning) {
+    res.write(`event: error\ndata: ${JSON.stringify({ text: 'Agent already has a running execution. Kill it first.' })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // Handle client disconnect — kill the process
+  req.on('close', () => {
+    killExecution(result.executionId);
+  });
+});
+
+// Kill the currently running execution for an agent
+router.post('/api/agents/:id/execute/kill', authMiddleware, requireResourceAccess('agent'), async (req, res) => {
+  const agentId = req.params.id as string;
+  const count = killAgentExecutions(agentId);
+  res.json({ ok: true, killed: count > 0, count });
+});
+
+// Check CLI health for an agent's connection type
+router.get('/api/agents/:id/cli-health', authMiddleware, requireResourceAccess('agent'), async (req, res) => {
+  const agentId = req.params.id as string;
+  const agent = db.select({
+    verbindungsTyp: agents.connectionType,
+  }).from(agents).where(eq(agents.id, agentId)).get();
+
+  if (!agent) {
+    return res.status(404).json({ error: 'Agent not found' });
+  }
+
+  const type = agent.verbindungsTyp;
+
+  // Map connection types to CLI binaries
+  const binaryMap: Record<string, string> = {
+    'claude-code': 'claude',
+    'codex-cli': 'codex',
+    'gemini-cli': 'gemini',
+    'kimi-cli': 'kimi',
+    'bash': 'bash',
+  };
+
+  const binary = binaryMap[type || ''];
+  if (!binary) {
+    return res.json({ type, needsCli: false, message: 'API-based adapter, no local CLI needed' });
+  }
+
+  const resolved = resolveCliPath(binary);
+  const health = await checkCliHealth(resolved);
+
+  res.json({
+    type,
+    binary: resolved,
+    needsCli: true,
+    available: health.available,
+    version: health.version,
+    error: health.error,
+  });
+});
+
+// =============================================================================
+// DEEP RESEARCH
+// =============================================================================
+
+router.post('/api/deep-research', authMiddleware, requireCompanyAccess(), async (req, res) => {
+  const companyId = (req as AuthRequest).companyId as string;
+  const { query } = req.body as { query?: string };
+
+  if (!query || query.trim().length < 3) {
+    return res.status(400).json({ error: 'Query required (min 3 chars)' });
+  }
+
+  // Create run first, then start processing in background
+  const run = createResearchRun(query.trim(), companyId);
+
+  res.status(202).json({
+    ok: true,
+    runId: run.id,
+    message: 'Research started',
+  });
+
+  // Continue processing in background
+  try {
+    await runDeepResearch(run);
+  } catch (e: any) {
+    console.error('Deep research error:', e);
+  }
+});
+
+router.get('/api/deep-research', authMiddleware, requireCompanyAccess(), async (req, res) => {
+  const runs = listRuns(companyId);
+  res.json({ runs });
+});
+
+router.get('/api/deep-research/:id', authMiddleware, requireCompanyAccess(), async (req, res) => {
+  const runId = req.params.id as string;
+  const run = loadRun(companyId, runId);
+  if (!run) return res.status(404).json({ error: 'Research run not found' });
+  res.json({ run });
+});
+
+router.delete('/api/deep-research/:id', authMiddleware, requireCompanyAccess(), async (req, res) => {
+  const runId = req.params.id as string;
+  const ok = deleteRun(companyId, runId);
+  res.json({ ok });
 });
 
 export default router;

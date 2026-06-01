@@ -18,6 +18,7 @@ export interface Unternehmen {
   beschreibung: string | null;
   ziel: string | null;
   status: 'active' | 'paused' | 'archived';
+  workDir?: string | null;
   erstelltAm: string;
   aktualisiertAm: string;
 }
@@ -157,6 +158,11 @@ export interface DashboardData {
   pendingApprovals: number;
   topExperten: Experte[];
   letzteAktivitaet: Aktivitaet[];
+  alleExperten?: Experte[];
+  zyklen?: { total: number; succeeded: number; failed: number };
+  topProjekte?: Array<{ id: string; titel: string; status: string;fortschritt: number }>;
+  aktiveZiele?: Array<{ id: string; titel: string; status: string;fortschritt: number }>;
+  letzteTrace?: Array<{ id: string; expertId: string; expertName?: string; aktion: string; details?: string; erstelltAm: string }>;
 }
 
 export interface KostenZusammenfassung {

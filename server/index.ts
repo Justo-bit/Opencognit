@@ -25,6 +25,8 @@ import { wakeupService } from './services/wakeup.js';
 import { skillsService } from './services/skills.js';
 import { cleanupService } from './services/cleanup.js';
 import { backupService } from './services/backup.js';
+import { createJobQueue } from './services/job-queue.js';
+import { startQueueWorker, stopQueueWorker } from './services/job-queue-worker.js';
 import { initializePluginSystem, shutdownPluginSystem, pluginManager } from './plugins/index.js';
 import { discordBotService } from './services/discord-bot.js';
 import { runClaudeDirectChat } from './adapters/claude-code.js';
@@ -43,8 +45,10 @@ import { appEvents } from './events.js';
 import { autoSaveInsights, loadRelevantMemory } from './services/memory-auto.js';
 import { nodeManager } from './services/nodeManager.js';
 import webhooksRouter from './routes/webhooks.js';
+import { rateLimit } from './middleware/rate-limit.js';
+import outgoingWebhooksRouter from './routes/outgoing-webhooks.js';
 import semanticMemoryRouter from './routes/semantic-memory.js';
-import skillsRouter from './routes/skills.js';
+import skillsRouter, { mapSkillToDe } from './routes/skills.js';
 import routinesRouter from './routes/routines.js';
 import projectsRouter from './routes/projects.js';
 import tasksRouter from './routes/tasks.js';
@@ -59,6 +63,7 @@ import companiesFinanceRouter from './routes/companies-finance.js';
 import settingsRouter from './routes/settings.js';
 import filesystemRouter from './routes/filesystem.js';
 import workersRouter from './routes/workers.js';
+import { startWebhookDispatcher } from './services/outgoing-webhooks.js';
 import agentsSoulRouter from './routes/agents-soul.js';
 import onboardingRouter from './routes/onboarding.js';
 import a2aMessagesRouter from './routes/a2a-messages.js';
@@ -69,9 +74,14 @@ import {
   requireResourceAccess,
   agentAuth,
   deriveAgentToken,
+  type AuthRequest,
 } from './middleware/auth.js';
 import { urlRewrite, responseAlias } from './middleware/compat.js';
-import { apiRateLimit } from './middleware/rate-limit.js';
+import { apiRateLimit, tenantRateLimit } from './middleware/rate-limit.js';
+import { traceMiddleware } from './middleware/trace.js';
+import { runStartupChecks } from './services/env-check.js';
+import { auditMiddleware } from './services/audit-log.js';
+import { companyScopeMiddleware } from './middleware/company-scope.js';
 // Re-export for any external module still importing from './index.js'
 export { authMiddleware, requireCompanyAccess, requireResourceAccess };
 
@@ -87,6 +97,9 @@ if (!process.env.JWT_SECRET) {
   }
 }
 const JWT_SECRET = process.env.JWT_SECRET as string;
+
+// ── Startup environment validation ───────────────────────────────────────────
+runStartupChecks();
 
 // ── Zod schemas for input validation ─────────────────────────────────────────
 const zCompany = z.object({
@@ -135,6 +148,9 @@ const app = express();
 // Compatibility middleware: DE → EN URL rewrites + EN → DE response aliasing
 app.use(urlRewrite);
 app.use(responseAlias);
+
+// Request tracing — attaches X-Request-ID and logs latency
+app.use(traceMiddleware);
 
 const PORT = parseInt(process.env.PORT || '3201');
 const server = http.createServer(app);
@@ -246,15 +262,22 @@ app.get('/api/auth/ich', async (req, res) => {
 });
 
 // Mount BetterAuth BEFORE express.json() — per BetterAuth docs
+// Rate limit sensitive auth endpoints
+const authStrictLimit = rateLimit({ windowMs: 15 * 60 * 1000, maxRequests: 10 });
+app.use('/api/auth/sign-in', authStrictLimit);
+app.use('/api/auth/sign-up', authStrictLimit);
+app.use('/api/auth/sign-out', authStrictLimit);
 app.use('/api/auth', toNodeHandler(betterAuth));
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Silence Chrome DevTools probe — harmless 404 spam in dev
 app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req: any, res: any) => res.json({}));
 
 // Webhooks need to bypass the global auth (they verify their own signatures).
 app.use('/api/webhooks', webhooksRouter);
+app.use('/', outgoingWebhooksRouter);
 
 // All other routers are mounted AFTER the global auth middleware below
 // so they participate in the same auth/rate-limit chain as the inline /api
@@ -304,6 +327,15 @@ app.use('/api', (req: express.Request, res: express.Response, next: express.Next
   if (oeffentlich.some(p => req.path.startsWith(p)) || req.path.startsWith('/agent/')) return next();
   return authMiddleware(req, res, next);
 });
+
+// Ensure company scope is present for all /api routes
+app.use('/api', companyScopeMiddleware);
+
+// Audit logging for all state-changing /api requests
+app.use('/api', auditMiddleware());
+
+// Per-tenant rate limiting (after auth so we know the company)
+app.use('/api', tenantRateLimit);
 
 // MOUNT EXTRACTED ROUTERS HERE — after the global rate-limiter and auth chain
 // so a request to a moved route still passes through them, exactly as it did
@@ -527,7 +559,7 @@ app.post('/api/agent/tasks', agentAuth, (req, res) => {
 app.post('/api/agent/tasks/:id/status', agentAuth, (req, res) => {
   const id = req.params.id as string;
   const { status } = req.body;
-  const expertId = req.body.agentId as string;
+  const expertId = (req as AuthRequest).agentContext?.agentId as string;
 
   const VALID_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled'];
   if (!status || !VALID_STATUSES.includes(status)) {
@@ -547,7 +579,7 @@ app.post('/api/agent/tasks/:id/status', agentAuth, (req, res) => {
   const agent = db.select().from(agents).where(eq(agents.id, expertId as string)).get();
   const agentName = agent?.name || '';
   const taskTitel = aufgabe?.title || '';
-  const unternehmenId = aufgabe?.companyId || req.body.companyId;
+  const unternehmenId = aufgabe?.companyId || (req as AuthRequest).agentContext?.companyId;
 
   if (status === 'done') {
     broadcastUpdate('task_completed', { unternehmenId, taskId: id, taskTitel, agentName });
@@ -562,8 +594,8 @@ app.post('/api/agent/tasks/:id/status', agentAuth, (req, res) => {
 
 // Agent Chat Reply Endpoint
 app.post('/api/agent/chat', agentAuth, (req, res) => {
-  const expertId = req.body.agentId;
-  const unternehmenId = req.body.companyId;
+  const expertId = (req as AuthRequest).agentContext?.agentId;
+  const unternehmenId = (req as AuthRequest).agentContext?.companyId;
   const { nachricht } = req.body;
 
   if (!nachricht) return res.status(400).json({ error: 'Missing nachricht' });
@@ -888,7 +920,7 @@ app.delete('/api/agents/:id/skills/:skillId', requireResourceAccess("agent"), as
 // =============================================
 function handleChatGet(req: express.Request, res: express.Response) {
   const id = req.params.id as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
 
   const history = db.select()
@@ -931,7 +963,7 @@ function handleChatGet(req: express.Request, res: express.Response) {
 
 function handleChatPost(req: express.Request, res: express.Response) {
   const id = req.params.id as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id'] || req.body.unternehmenId || req.body.companyId) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || (req as AuthRequest).agentContext?.companyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id'] || req.body.unternehmenId || req.body.companyId) as string;
   const nachricht = req.body.nachricht || req.body.message;
   const absenderTyp = req.body.absenderTyp || req.body.senderType || 'board';
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
@@ -960,7 +992,7 @@ app.post('/api/agents/:id/chat', requireResourceAccess('agent'), handleChatPost)
 // DELETE entire chat history for an agent
 app.delete('/api/agents/:id/chat', requireResourceAccess('agent'), (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
   db.delete(chatMessages).where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, expertId))).run();
   res.json({ status: 'ok', deleted: true });
@@ -970,7 +1002,7 @@ app.delete('/api/agents/:id/chat', requireResourceAccess('agent'), (req: express
 app.delete('/api/agents/:id/chat/messages/:msgId', requireResourceAccess('agent'), (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
   const msgId = req.params.msgId as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   if (!unternehmenId) return res.status(400).json({ error: 'Missing x-company-id header' });
   db.delete(chatMessages).where(and(eq(chatMessages.companyId, unternehmenId), eq(chatMessages.agentId, expertId), eq(chatMessages.id, msgId))).run();
   res.json({ status: 'ok', deleted: true });
@@ -1009,7 +1041,7 @@ const URL_PATTERN = /https?:\/\/[^\s)>"']+/g;
 
 app.post('/api/agents/:id/chat/direct', requireResourceAccess("agent"), async (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht } = req.body;
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
 
@@ -1336,7 +1368,7 @@ ${langLine(uiLang)} ${isEn ? `You respond directly to board messages. Be precise
 // =============================================
 app.post(['/api/agents/:id/chat/stream', '/api/experten/:id/chat/stream'], authMiddleware, requireResourceAccess('agent'), async (req: express.Request, res: express.Response) => {
   const expertId = req.params.id as string;
-  const unternehmenId = ((req as any).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
+  const unternehmenId = ((req as AuthRequest).resolvedCompanyId || req.headers['x-company-id'] || req.headers['x-unternehmen-id'] || req.headers['x-firma-id']) as string;
   const { nachricht, image } = req.body; // image: { data: string (base64), mimeType: string }
   if (!unternehmenId || !nachricht) return res.status(400).json({ error: 'Missing parameters' });
 
@@ -3266,10 +3298,18 @@ app.get('/api/companies/:unternehmenId/agent-quality', authMiddleware, requireCo
 // =============================================
 app.get('/api/ollama/models', authMiddleware, async (req, res) => {
   const baseUrl = (req.query.baseUrl as string) || 'http://127.0.0.1:11434';
+  const apiKey = (req.query.apiKey as string) || '';
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const r = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    const r = await fetch(`${baseUrl}/api/tags`, { 
+      headers,
+      signal: controller.signal 
+    });
     clearTimeout(timeout);
     if (!r.ok) return res.status(502).json({ error: 'Ollama unreachable' });
     const data = await r.json() as any;
@@ -4284,9 +4324,25 @@ async function start() {
   backupService.start();
   console.log('💾 Backup-Service gestartet (täglich)\n');
 
-  // Start wakeup processor — verarbeitet pending Wakeups alle 10s
-  wakeupProcessorInterval = setInterval(processAllPendingWakeups, 10000);
-  console.log('🔄 Wakeup-Processor gestartet (verarbeitet alle 10s)\n');
+  // Initialize job queue and worker for push-based heartbeat execution
+  try {
+    const queue = await createJobQueue();
+    await startQueueWorker(queue);
+  } catch (e: any) {
+    console.warn('⚠️ Job queue startup failed:', e.message);
+  }
+
+  // Start outgoing webhook dispatcher
+  try {
+    startWebhookDispatcher();
+  } catch (e: any) {
+    console.warn('⚠️ Webhook dispatcher startup failed:', e.message);
+  }
+
+  // Start wakeup processor — safety-net poller for missed wakeups (was 10s, now 60s)
+  // The job queue worker handles most wakeups immediately; this catches edge cases.
+  wakeupProcessorInterval = setInterval(processAllPendingWakeups, 60000);
+  console.log('🔄 Wakeup-Processor gestartet (Safety-Net alle 60s)\n');
 
   // Start periodic zyklus checker — erstellt Wakeups basierend auf zyklusIntervallSek alle 30s
   zyklusCheckerInterval = setInterval(checkPeriodicWakeups, 30000);
@@ -4384,17 +4440,28 @@ async function start() {
 // Graceful shutdown
 async function shutdown() {
   console.log('\n🛑 OpenCognit Server fährt herunter...');
-  
-  // Emergency timeout: Force exit if cleanup takes too long
-  setTimeout(() => {
-    console.error('⚠️ Shutdown Timeout erreicht. Forciere Beendung...');
-    process.exit(1);
-  }, 2000).unref();
 
-  messagingService.stopPolling();
+  // Emergency timeout: Force exit if graceful shutdown takes too long
+  // 30s allows active heartbeats (5m max) to finish their current step
+  const forceExitTimer = setTimeout(() => {
+    console.error('⚠️ Shutdown Timeout (30s) erreicht. Forciere Beendung...');
+    process.exit(1);
+  }, 30_000);
+  forceExitTimer.unref();
+
+  // 1. Stop accepting new work
   cronService.stop();
   cleanupService.stop();
   backupService.stop();
+  messagingService.stopPolling();
+
+  // 2. Stop accepting new HTTP requests
+  console.log('🔒 Closing HTTP server (draining connections)...');
+  server.close(() => {
+    console.log('🔒 HTTP server closed');
+  });
+
+  // 3. Stop background processors
   if (wakeupProcessorInterval) {
     clearInterval(wakeupProcessorInterval);
     wakeupProcessorInterval = null;
@@ -4403,6 +4470,23 @@ async function shutdown() {
     clearInterval(zyklusCheckerInterval);
     zyklusCheckerInterval = null;
   }
+
+  // 4. Stop webhook dispatcher (wait for pending sends)
+  try {
+    const { stopWebhookDispatcher } = await import('./services/outgoing-webhooks.js');
+    await stopWebhookDispatcher();
+  } catch (e: any) {
+    console.warn('⚠️ Webhook dispatcher shutdown error:', e.message);
+  }
+
+  // 5. Stop job worker (wait for active jobs)
+  try {
+    await stopQueueWorker();
+  } catch (e: any) {
+    console.warn('⚠️ Job worker shutdown error:', e.message);
+  }
+
+  // 6. Stop external services
   try {
     await discordBotService.shutdown();
   } catch (e: any) {
@@ -4414,18 +4498,22 @@ async function shutdown() {
     console.error('Fehler beim Herunterfahren des Plugin-Systems:', error);
   }
 
-  console.log('Schließe Sockets und Datenbank...');
+  // 7. Close WebSocket connections
+  console.log('🔌 Closing WebSocket connections...');
   wss.clients.forEach(client => client.close());
   wss.close();
-  server.close(() => {
-    if (sqlite) {
-      try {
-        sqlite.close();
-      } catch (e) {}
-    }
-    console.log('✅ Server erfolgreich beendet.');
-    process.exit(0);
-  });
+
+  // 8. Close database
+  console.log('💾 Closing database...');
+  if (sqlite) {
+    try {
+      sqlite.close();
+    } catch (e) {}
+  }
+
+  clearTimeout(forceExitTimer);
+  console.log('✅ Server erfolgreich beendet.');
+  process.exit(0);
 }
 
 process.on('SIGTERM', shutdown);
