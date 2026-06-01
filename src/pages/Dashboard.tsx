@@ -52,9 +52,8 @@ function SectionHeader({ title, to, linkLabel }: { title: string; to: string; li
 }
 
 export function Dashboard() {
-  const { t } = useI18n();
-  const { aktivesUnternehmen } = useCompany();
   const { t, language: lang } = useI18n();
+  const { aktivesUnternehmen } = useCompany();
   const navigate = useNavigate();
   useBreadcrumbs([aktivesUnternehmen?.name ?? '', t.nav.dashboard]);
 

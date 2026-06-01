@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
 import { Terminal, Square, Loader2, AlertCircle } from 'lucide-react';
 
 interface TerminalLine {
@@ -187,7 +187,7 @@ export function AgentTerminal({
     runStream();
   }, [input, running, agentId, de, addLine]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       execute();

@@ -84,6 +84,7 @@ router.get('/api/companies', (req, res) => {
 });
 
 router.post('/api/companies', (req, res) => {
+  const userId = (req as AuthRequest).users?.userId;
   const body = validate(zCompany, req, res);
   if (!body) return;
   const { name, beschreibung, ziel, workDir } = body;
@@ -346,6 +347,7 @@ router.delete('/api/companies/:id/reset', authMiddleware, requireCompanyAccess([
 
 // Companies the current user belongs to
 router.get('/api/user/memberships', authMiddleware, (req, res) => {
+  const userId = (req as AuthRequest).users?.userId;
   if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
   const rows = db.select({
@@ -443,6 +445,7 @@ router.post('/api/companies/:id/invites', authMiddleware, requireCompanyAccess([
 
 router.post('/api/invites/:token/accept', authMiddleware, (req, res) => {
   const token = req.params.token as string;
+  const userId = (req as AuthRequest).users?.userId;
   if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
   const membership = db.select().from(companyMemberships)

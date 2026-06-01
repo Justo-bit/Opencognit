@@ -282,6 +282,7 @@ router.patch('/api/learned-skills/:id', authMiddleware, (req, res) => {
 });
 
 router.delete('/api/learned-skills/:id', authMiddleware, (req, res) => {
+  const userId = (req as AuthRequest).users?.userId;
   const id = req.params.id as string;
   const existing = db.select().from(learnedSkills).where(eq(learnedSkills.id, id)).get();
   if (!existing) return res.status(404).json({ error: 'Skill not found' });

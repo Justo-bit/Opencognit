@@ -53,7 +53,6 @@ const SOURCE_LABELS: Record<string, { de: string; en: string }> = {
 };
 
 export function Memory() {
-  const { t } = useI18n();
   const { t, language } = useI18n();
   const de = language === 'de';
   const { aktivesUnternehmen } = useCompany();
