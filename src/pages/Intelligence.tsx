@@ -1190,7 +1190,6 @@ function WingCard({ expert, t }: { expert: Expert; t: any }) {
 export function Intelligence() {
   const { t } = useI18n();
   const i18n = useI18n();
-  const t = i18n.t;
   const { aktivesUnternehmen } = useCompany();
   useBreadcrumbs([aktivesUnternehmen?.name ?? '', t.nav.intelligence]);
 

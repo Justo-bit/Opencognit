@@ -828,7 +828,7 @@ export const en = {
     team: 'Team',
     tokenShownOnceOnlyCopyItNow: 'Token shown once only. Copy it now.',
     totalFacts: 'Total Facts',
-    trackYourCompany: 'Track your company',
+    trackYourCompany: "Track your company's strategic goals and milestones",
     transparent: 'transparent',
     tryADifferentSearchTerm: 'Try a different search term.',
     wakeupFailed: 'Wakeup failed',
