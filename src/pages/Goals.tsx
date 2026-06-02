@@ -55,6 +55,7 @@ function GoalRow({
   onDelete: (id: string) => void;
   de: boolean;
 }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [titel, setTitel] = useState(goal.titel);
@@ -267,6 +268,7 @@ function GoalRow({
 // ── Create form ───────────────────────────────────────────────────────────────
 
 function CreateGoalForm({ unternehmenId, onCreated, de }: { unternehmenId: string; onCreated: () => void; de: boolean }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [titel, setTitel] = useState('');
   const [beschreibung, setBeschreibung] = useState('');
