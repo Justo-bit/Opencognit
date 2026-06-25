@@ -853,6 +853,36 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== Artifact Store (PR2B-4 — content-addressed file persistence) =====
+export const artifactStore = sqliteTable('artifact_store', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id),
+  projectId: text('projekt_id').references(() => projects.id),
+  taskId: text('aufgabe_id').references(() => tasks.id),
+  agentId: text('expert_id').references(() => agents.id),
+  runId: text('run_id').references(() => workCycles.id),
+  name: text('name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  checksumSha256: text('checksum_sha256').notNull(),
+  storagePath: text('storage_path').notNull(),
+  manifestRef: text('manifest_ref'),
+  manifestVersion: text('manifest_version'),
+  sourceRef: text('source_ref'),
+  sourceHash: text('source_hash'),
+  retentionPolicy: text('retention_policy').notNull().default('permanent'),
+  retentionTtlDays: integer('retention_ttl_days'),
+  retainUntil: text('retain_until'),
+  status: text('status').notNull().default('active'),
+  deletedAt: text('deleted_at'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+}, (t) => ({
+  idxCompany: index('artifact_store_company_idx').on(t.companyId),
+  idxStatus: index('artifact_store_status_idx').on(t.companyId, t.status),
+  idxChecksum: index('artifact_store_checksum_idx').on(t.checksumSha256),
+}));
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -906,6 +936,7 @@ export const allTables = {
   taskCheckpoints,
   learnedSkills,
   memoryConflicts,
+  artifactStore,
   user,
   session,
   account,
