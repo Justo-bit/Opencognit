@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-AIG-2: Audit Events, Performance, Thresholds, Queues =====
+export const aiAgentAuditEvents = sqliteTable('ai_agent_audit_events', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentId: text('agent_id').notNull(), eventType: text('event_type').notNull(), eventDescription: text('event_description').notNull(), affectedSubjectType: text('affected_subject_type'), affectedSubjectId: text('affected_subject_id'), eventData: text('event_data'), occurredAt: text('occurred_am').notNull(), createdAt: text('erstellt_am').notNull() });
+export const aiAgentPerformanceMetrics = sqliteTable('ai_agent_performance_metrics', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentId: text('agent_id').notNull(), periodStart: text('period_start').notNull(), periodEnd: text('period_end').notNull(), totalRecommendations: integer('total_recommendations').default(0), accepted: integer('accepted').default(0), rejected: integer('rejected').default(0), modified: integer('modified').default(0), escalated: integer('escalated').default(0), falsePositives: integer('false_positives').default(0), falseNegatives: integer('false_negatives').default(0), avgReviewTimeHours: real('avg_review_time_hours'), financialImpact: real('financial_impact'), scheduleImpactDays: real('schedule_impact_days'), safetyImpactCount: integer('safety_impact_count').default(0), acceptanceRate: real('acceptance_rate'), computedAt: text('computed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+export const aiAgentReviewThresholds = sqliteTable('ai_agent_review_thresholds', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentId: text('agent_id'), controlRoom: text('control_room'), thresholdType: text('threshold_type').notNull(), thresholdValue: real('threshold_value').notNull().default(0), action: text('action').notNull().default('flag_for_review'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const aiAgentReviewQueues = sqliteTable('ai_agent_review_queues', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), recommendationId: text('recommendation_id').notNull(), assignedTo: text('assigned_to'), queueStatus: text('queue_status').notNull().default('pending'), priority: text('priority').default('normal'), dueAt: text('due_am'), reviewedAt: text('reviewed_am'), createdAt: text('erstellt_am').notNull() });
+export const aigReviews = sqliteTable('aig_reviews', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id'), reviewedBy: text('reviewed_by').notNull(), role: text('rolle').notNull().default('ai_governance_lead'), decision: text('decision').notNull().default('no_action'), comments: text('comments'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  aiAgentAuditEvents,
+  aiAgentPerformanceMetrics,
+  aiAgentReviewThresholds,
+  aiAgentReviewQueues,
+  aigReviews,
   session,
   account,
   verification,
