@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-DWE-2: Progress, Issues, Site Diary, Reviews =====
+export const workProgressRecords = sqliteTable('work_progress_records', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), workPackId: text('work_pack_id'), activityId: text('activity_id'), reportDate: text('report_date').notNull(), plannedPct: real('planned_pct').default(0), actualPct: real('actual_pct').notNull().default(0), description: text('description'), reportedBy: text('reported_by').notNull(), createdAt: text('erstellt_am').notNull() });
+export const workExecutionIssues = sqliteTable('work_execution_issues', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), workPackId: text('work_pack_id'), executionRecordId: text('execution_record_id'), issueType: text('issue_type').notNull(), description: text('description').notNull(), severity: text('severity').notNull().default('medium'), raisedBy: text('raised_by').notNull(), resolution: text('resolution'), resolvedBy: text('resolved_by'), resolvedAt: text('resolved_am'), status: text('status').notNull().default('open'), createdAt: text('erstellt_am').notNull(), updatedAt: text('aktualisiert_am').notNull() });
+export const siteDiaryEntries = sqliteTable('site_diary_entries', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), diaryDate: text('diary_date').notNull(), shift: text('shift').default('day'), weatherAm: text('weather_am'), weatherPm: text('weather_pm'), temperatureMin: real('temperature_min'), temperatureMax: real('temperature_max'), workSummary: text('work_summary').notNull(), visitors: text('visitors'), instructionsReceived: text('instructions_received'), plantOnSite: text('plant_on_site'), labourOnSite: text('labour_on_site'), materialsReceived: text('materials_received'), incidents: text('incidents'), delays: text('delays'), recordedBy: text('recorded_by').notNull(), reviewedBy: text('reviewed_by'), createdAt: text('erstellt_am').notNull() });
+export const workExecutionReviews = sqliteTable('work_execution_reviews', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), workPackId: text('work_pack_id'), reviewedBy: text('reviewed_by').notNull(), role: text('rolle').notNull().default('site_engineer'), reviewType: text('review_type').notNull().default('daily'), decision: text('decision').notNull().default('no_action'), comments: text('comments'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+export const dweReviews = sqliteTable('dwe_reviews', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), reviewedBy: text('reviewed_by').notNull(), role: text('rolle').notNull().default('project_manager'), reviewType: text('review_type').notNull().default('weekly'), decision: text('decision').notNull().default('no_action'), comments: text('comments'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  workProgressRecords,
+  workExecutionIssues,
+  siteDiaryEntries,
+  workExecutionReviews,
+  dweReviews,
   session,
   account,
   verification,
