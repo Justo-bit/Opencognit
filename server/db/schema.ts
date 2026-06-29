@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-MDO-1: UoM, Materials, Equipment Types, Skills =====
+export const unitsOfMeasure = sqliteTable('units_of_measure', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), code: text('code').notNull(), name: text('name').notNull(), category: text('category'), baseUnitId: text('base_unit_id'), conversionFactor: real('conversion_factor').default(1), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const materialCategories = sqliteTable('material_categories', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), categoryCode: text('category_code').notNull(), categoryName: text('category_name').notNull(), parentId: text('parent_id'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const materialCatalog = sqliteTable('material_catalog', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), materialCode: text('material_code').notNull(), materialName: text('material_name').notNull(), categoryId: text('category_id'), uomId: text('uom_id'), description: text('description'), standardRate: real('standard_rate'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const equipmentTypes = sqliteTable('equipment_types', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), typeCode: text('type_code').notNull(), typeName: text('type_name').notNull(), category: text('category'), defaultUomId: text('default_uom_id'), fuelType: text('fuel_type'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const skillCatalog = sqliteTable('skill_catalog', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), skillCode: text('skill_code').notNull(), skillName: text('skill_name').notNull(), trade: text('trade'), category: text('category'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  unitsOfMeasure,
+  materialCategories,
+  materialCatalog,
+  equipmentTypes,
+  skillCatalog,
   session,
   account,
   verification,
