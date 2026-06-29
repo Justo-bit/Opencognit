@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-AIG-1: Agent Registry + Recommendation Log =====
+export const aiAgents = sqliteTable('ai_agents', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentCode: text('agent_code').notNull(), agentName: text('agent_name').notNull(), controlRoom: text('control_room').notNull(), description: text('description'), capabilities: text('capabilities'), riskCategory: text('risk_category').notNull().default('medium'), requiresHumanApproval: integer('requires_human_approval').notNull().default(1), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull(), updatedAt: text('aktualisiert_am').notNull() });
+export const aiAgentVersions = sqliteTable('ai_agent_versions', { id: text('id').primaryKey(), agentId: text('agent_id').notNull(), version: text('version').notNull(), changelog: text('changelog'), configSnapshot: text('config_snapshot'), deployedBy: text('deployed_by'), deployedAt: text('deployed_am'), status: text('status').notNull().default('active'), createdAt: text('erstellt_am').notNull() });
+export const aiAgentRecommendations = sqliteTable('ai_agent_recommendations', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentId: text('agent_id').notNull(), agentVersionId: text('agent_version_id'), projectId: text('project_id'), subjectType: text('subject_type').notNull(), subjectId: text('subject_id').notNull(), recommendation: text('recommendation').notNull(), evidenceSummary: text('evidence_summary'), confidence: real('confidence'), riskLevel: text('risk_level').notNull().default('medium'), requiresHumanApproval: integer('requires_human_approval').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const aiAgentEvidenceLinks = sqliteTable('ai_agent_evidence_links', { id: text('id').primaryKey(), recommendationId: text('recommendation_id').notNull(), evidenceType: text('evidence_type').notNull(), evidenceRef: text('evidence_ref').notNull(), evidenceSummary: text('evidence_summary'), createdAt: text('erstellt_am').notNull() });
+export const aiAgentReviews = sqliteTable('ai_agent_reviews', { id: text('id').primaryKey(), recommendationId: text('recommendation_id').notNull(), reviewedBy: text('reviewed_by').notNull(), reviewerRole: text('reviewer_role').notNull(), decision: text('decision').notNull().default('pending'), decisionReason: text('decision_reason'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  aiAgents,
+  aiAgentVersions,
+  aiAgentRecommendations,
+  aiAgentEvidenceLinks,
+  aiAgentReviews,
   session,
   account,
   verification,
