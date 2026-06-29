@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-COMMS-2: Announcements, Groups, Contacts, Reviews =====
+export const projectAnnouncements = sqliteTable('project_announcements', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), title: text('title').notNull(), body: text('body').notNull(), priority: text('priority').default('normal'), publishedBy: text('published_by').notNull(), publishedAt: text('published_am').notNull(), expiresAt: text('expires_am'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const communicationGroups = sqliteTable('communication_groups', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id'), groupName: text('group_name').notNull(), description: text('description'), createdBy: text('created_by').notNull(), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const communicationGroupMembers = sqliteTable('communication_group_members', { id: text('id').primaryKey(), groupId: text('group_id').notNull(), userId: text('user_id').notNull(), role: text('rolle').default('member'), addedBy: text('added_by').notNull(), addedAt: text('added_am').notNull(), createdAt: text('erstellt_am').notNull() });
+export const contactLists = sqliteTable('contact_lists', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id'), contactName: text('contact_name').notNull(), contactRole: text('contact_role'), email: text('email'), phone: text('phone'), organization: text('organization'), notes: text('notes'), createdAt: text('erstellt_am').notNull() });
+export const commsReviews = sqliteTable('comms_reviews', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id'), reviewedBy: text('reviewed_by').notNull(), role: text('rolle').notNull().default('project_manager'), decision: text('decision').notNull().default('no_action'), comments: text('comments'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  projectAnnouncements,
+  communicationGroups,
+  communicationGroupMembers,
+  contactLists,
+  commsReviews,
   session,
   account,
   verification,
