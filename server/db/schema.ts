@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-MDO-2: Locations, Tax, Currency, Documents, Classifications =====
+export const locationHierarchy = sqliteTable('location_hierarchy', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), code: text('code').notNull(), name: text('name').notNull(), parentId: text('parent_id'), locationType: text('location_type').notNull().default('zone'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const taxCodes = sqliteTable('tax_codes', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), code: text('code').notNull(), name: text('name').notNull(), rate: real('rate').notNull().default(0), taxType: text('tax_type').notNull().default('vat'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const currencyRates = sqliteTable('currency_rates', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), fromCurrency: text('from_currency').notNull(), toCurrency: text('to_currency').notNull(), rate: real('rate').notNull(), effectiveDate: text('effective_date').notNull(), source: text('source'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const documentTypes = sqliteTable('document_types', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), typeCode: text('type_code').notNull(), typeName: text('type_name').notNull(), category: text('category'), requiredFor: text('required_for'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const workClassifications = sqliteTable('work_classifications', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), classCode: text('class_code').notNull(), className: text('class_name').notNull(), trade: text('trade'), description: text('description'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  locationHierarchy,
+  taxCodes,
+  currencyRates,
+  documentTypes,
+  workClassifications,
   session,
   account,
   verification,
