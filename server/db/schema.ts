@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PLN-1: Activity Register, CPM Dependencies, Baselines =====
+export const projectActivities = sqliteTable('project_activities', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), wbsCode: text('wbs_code'), activityCode: text('activity_code').notNull(), activityName: text('activity_name').notNull(), description: text('description'), activityType: text('activity_type').default('construction'), plannedStart: text('planned_start'), plannedEnd: text('planned_end'), actualStart: text('actual_start'), actualEnd: text('actual_end'), durationDays: real('duration_days'), plannedPct: real('planned_pct').default(0), actualPct: real('actual_pct').default(0), earlyStart: real('early_start'), earlyFinish: real('early_finish'), lateStart: real('late_start'), lateFinish: real('late_finish'), totalFloat: real('total_float'), isCritical: integer('is_critical').notNull().default(0), status: text('status').notNull().default('not_started'), parentId: text('parent_id'), boqItemId: text('boq_item_id'), assignedTo: text('assigned_to'), createdAt: text('erstellt_am').notNull(), updatedAt: text('aktualisiert_am').notNull() });
+export const activityDependencies = sqliteTable('activity_dependencies', { id: text('id').primaryKey(), predecessorId: text('predecessor_id').notNull(), successorId: text('successor_id').notNull(), dependencyType: text('dependency_type').notNull().default('FS'), lagDays: real('lag_days').default(0), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const projectBaselines = sqliteTable('project_baselines', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), baselineName: text('baseline_name').notNull(), baselineType: text('baseline_type').notNull().default('schedule'), version: integer('version').notNull().default(1), baselineDate: text('baseline_date').notNull(), approvedBy: text('approved_by'), approvedAt: text('approved_am'), isCurrent: integer('is_current').notNull().default(0), notes: text('notes'), createdAt: text('erstellt_am').notNull() });
+export const scheduleBaselineVersions = sqliteTable('schedule_baseline_versions', { id: text('id').primaryKey(), baselineId: text('baseline_id').notNull(), activityId: text('activity_id').notNull(), plannedStart: text('planned_start').notNull(), plannedEnd: text('planned_end').notNull(), durationDays: real('duration_days'), plannedPct: real('planned_pct').default(0), createdAt: text('erstellt_am').notNull() });
+export const plnAgentRecommendations = sqliteTable('pln_agent_recommendations', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentId: text('agent_id'), projectId: text('project_id').notNull(), activityId: text('activity_id'), issue: text('issue').notNull(), evidence: text('evidence'), riskLevel: text('risk_level').notNull().default('medium'), recommendedAction: text('recommended_action').notNull(), owner: text('owner'), status: text('status').notNull().default('pending_review'), detectedAt: text('detected_am').notNull(), reviewedAt: text('reviewed_am'), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  projectActivities,
+  activityDependencies,
+  projectBaselines,
+  scheduleBaselineVersions,
+  plnAgentRecommendations,
   session,
   account,
   verification,
