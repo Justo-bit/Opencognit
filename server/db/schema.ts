@@ -853,6 +853,141 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-CON-2+3+4+5: Variations, Claims, Notices, Closeout =====
+export const contractVariations = sqliteTable('contract_variations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  contractId: text('contract_id').notNull(),
+  variationNumber: text('variation_number'),
+  title: text('title').notNull(),
+  description: text('description'),
+  variationType: text('variation_type').notNull().default('scope_change'),
+  initiatedBy: text('initiated_by').notNull(),
+  initiatedDate: text('initiated_date').notNull(),
+  costImpact: real('cost_impact').default(0),
+  timeImpactDays: integer('time_impact_days').default(0),
+  linkedClaimId: text('linked_claim_id'),
+  status: text('status').notNull().default('draft'),
+  approvedBy: text('approved_by'),
+  approvedDate: text('approved_date'),
+  rejectionReason: text('rejection_reason'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const variationCostImpacts = sqliteTable('variation_cost_impacts', {
+  id: text('id').primaryKey(),
+  variationId: text('variation_id').notNull(),
+  boqItemId: text('boq_item_id'),
+  description: text('description').notNull(),
+  quantity: real('quantity').notNull(),
+  unit: text('unit').notNull().default('No.'),
+  unitRate: real('unit_rate').notNull(),
+  totalAmount: real('total_amount').notNull().default(0),
+  costCode: text('cost_code'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const variationTimeImpacts = sqliteTable('variation_time_impacts', {
+  id: text('id').primaryKey(),
+  variationId: text('variation_id').notNull(),
+  activityId: text('activity_id'),
+  description: text('description').notNull(),
+  delayDays: integer('delay_days').notNull().default(0),
+  revisedCompletionDate: text('revised_completion_date'),
+  justification: text('justification'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractClaims = sqliteTable('contract_claims', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  contractId: text('contract_id').notNull(),
+  variationId: text('variation_id'),
+  claimNumber: text('claim_number'),
+  title: text('title').notNull(),
+  claimType: text('claim_type').notNull().default('delay'),
+  description: text('description'),
+  claimedAmount: real('claimed_amount').notNull().default(0),
+  entitlementBasis: text('entitlement_basis'),
+  clauseReference: text('clause_reference'),
+  notifiedDate: text('notified_date'),
+  submittedDate: text('submitted_date'),
+  determinedAmount: real('determined_amount').default(0),
+  settlementAmount: real('settlement_amount').default(0),
+  settledDate: text('settled_date'),
+  status: text('status').notNull().default('draft'),
+  rejectionReason: text('rejection_reason'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const claimEvidence = sqliteTable('claim_evidence', {
+  id: text('id').primaryKey(),
+  claimId: text('claim_id').notNull(),
+  evidenceType: text('evidence_type').notNull(),
+  description: text('description'),
+  filePath: text('file_path'),
+  submittedBy: text('submitted_by'),
+  submittedAt: text('submitted_at').notNull(),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractNotices = sqliteTable('contract_notices', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  contractId: text('contract_id').notNull(),
+  noticeType: text('notice_type').notNull(),
+  noticeNumber: text('notice_number'),
+  subject: text('subject').notNull(),
+  body: text('body'),
+  sentBy: text('sent_by').notNull(),
+  sentDate: text('sent_date').notNull(),
+  receivedBy: text('received_by'),
+  receivedDate: text('received_date'),
+  responseRequired: integer('response_required').notNull().default(0),
+  responseDueDate: text('response_due_date'),
+  respondedDate: text('responded_date'),
+  status: text('status').notNull().default('sent'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractCorrespondence = sqliteTable('contract_correspondence', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  contractId: text('contract_id').notNull(),
+  correspondenceType: text('correspondence_type').notNull(),
+  referenceNumber: text('reference_number'),
+  subject: text('subject').notNull(),
+  sender: text('sender').notNull(),
+  recipient: text('recipient').notNull(),
+  direction: text('direction').notNull().default('incoming'),
+  sentDate: text('sent_date'),
+  receivedDate: text('received_date'),
+  linkedNoticeId: text('linked_notice_id'),
+  linkedVariationId: text('linked_variation_id'),
+  linkedClaimId: text('linked_claim_id'),
+  status: text('status').notNull().default('received'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractReviews = sqliteTable('contract_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  contractId: text('contract_id').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('contract_administrator'),
+  decision: text('decision').notNull().default('no_action'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1042,14 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  contractVariations,
+  variationCostImpacts,
+  variationTimeImpacts,
+  contractClaims,
+  claimEvidence,
+  contractNotices,
+  contractCorrespondence,
+  contractReviews,
   session,
   account,
   verification,
