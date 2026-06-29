@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-COMMS-1: Messages, Notifications, Templates =====
+export const platformMessages = sqliteTable('platform_messages', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id'), senderId: text('sender_id').notNull(), subject: text('subject'), body: text('body').notNull(), priority: text('priority').default('normal'), isRead: integer('is_read').notNull().default(0), readAt: text('read_am'), recipients: text('recipients'), parentMessageId: text('parent_message_id'), createdAt: text('erstellt_am').notNull() });
+export const notificationChannels = sqliteTable('notification_channels', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), channelType: text('channel_type').notNull(), channelLabel: text('channel_label').notNull(), config: text('config'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const notificationTemplates = sqliteTable('notification_templates', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), templateCode: text('template_code').notNull(), templateName: text('template_name').notNull(), channelType: text('channel_type').notNull(), subjectTemplate: text('subject_template'), bodyTemplate: text('body_template').notNull(), variables: text('variables'), isActive: integer('is_active').notNull().default(1), createdAt: text('erstellt_am').notNull() });
+export const notificationLogs = sqliteTable('notification_logs', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), templateId: text('template_id'), channelType: text('channel_type').notNull(), recipient: text('recipient').notNull(), subject: text('subject'), body: text('body').notNull(), status: text('status').notNull().default('sent'), errorMessage: text('error_message'), sentAt: text('sent_am').notNull(), createdAt: text('erstellt_am').notNull() });
+export const commsAgentRecommendations = sqliteTable('comms_agent_recommendations', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentId: text('agent_id'), projectId: text('project_id'), issue: text('issue').notNull(), evidence: text('evidence'), riskLevel: text('risk_level').notNull().default('low'), recommendedAction: text('recommended_action').notNull(), owner: text('owner'), status: text('status').notNull().default('pending_review'), detectedAt: text('detected_am').notNull(), reviewedAt: text('reviewed_am'), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  platformMessages,
+  notificationChannels,
+  notificationTemplates,
+  notificationLogs,
+  commsAgentRecommendations,
   session,
   account,
   verification,
