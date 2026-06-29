@@ -853,6 +853,101 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-QC-2: NCR, Corrective Actions, Test Results =====
+export const nonConformanceReports = sqliteTable('non_conformance_reports', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  inspectionId: text('inspection_id'),
+  activityId: text('activity_id'),
+  ncrNumber: text('ncr_number'),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  ncrType: text('ncr_type').notNull().default('minor'),
+  severity: text('severity').notNull().default('low'),
+  raisedBy: text('raised_by').notNull(),
+  raisedAt: text('raised_am').notNull(),
+  rootCause: text('root_cause'),
+  disposition: text('disposition'),
+  dispositionBy: text('disposition_by'),
+  dispositionAt: text('disposition_am'),
+  costImpact: real('cost_impact').default(0),
+  scheduleImpactDays: integer('schedule_impact_days').default(0),
+  status: text('status').notNull().default('open'),
+  closedBy: text('closed_by'),
+  closedAt: text('closed_am'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const ncrCorrectiveActions = sqliteTable('ncr_corrective_actions', {
+  id: text('id').primaryKey(),
+  ncrId: text('ncr_id').notNull(),
+  sequenceNumber: integer('sequence_number').notNull(),
+  actionDescription: text('action_description').notNull(),
+  responsibleParty: text('responsible_party').notNull(),
+  targetDate: text('target_date'),
+  completed: integer('completed').notNull().default(0),
+  completedBy: text('completed_by'),
+  completedAt: text('completed_am'),
+  evidence: text('evidence'),
+  verifiedBy: text('verified_by'),
+  verifiedAt: text('verified_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const testResults = sqliteTable('test_results', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  inspectionId: text('inspection_id'),
+  itpCheckpointId: text('itp_checkpoint_id'),
+  testName: text('test_name').notNull(),
+  testType: text('test_type').notNull(),
+  testStandard: text('test_standard'),
+  sampleId: text('sample_id'),
+  testValue: text('test_value'),
+  acceptableRange: text('acceptable_range'),
+  passed: integer('passed').notNull().default(0),
+  testedBy: text('tested_by').notNull(),
+  testedAt: text('tested_am').notNull(),
+  equipmentUsed: text('equipment_used'),
+  certificateRef: text('certificate_ref'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const qcHoldPoints = sqliteTable('qc_hold_points', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  activityId: text('activity_id'),
+  itpCheckpointId: text('itp_checkpoint_id'),
+  description: text('description').notNull(),
+  holdReason: text('hold_reason').notNull(),
+  placedBy: text('placed_by').notNull(),
+  placedAt: text('placed_am').notNull(),
+  releasedBy: text('released_by'),
+  releasedAt: text('released_am'),
+  releaseConditions: text('release_conditions'),
+  status: text('status').notNull().default('active'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const qcReviews = sqliteTable('qc_reviews', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  reviewedBy: text('reviewed_by').notNull(),
+  role: text('rolle').notNull().default('qc_engineer'),
+  reviewType: text('review_type').notNull().default('daily'),
+  decision: text('decision').notNull().default('no_action'),
+  comments: text('comments'),
+  reviewedAt: text('reviewed_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1002,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  nonConformanceReports,
+  ncrCorrectiveActions,
+  testResults,
+  qcHoldPoints,
+  qcReviews,
   session,
   account,
   verification,
