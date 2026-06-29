@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-DWE-1: Work Pack + Execution Record Backbone =====
+export const dailyWorkPacks = sqliteTable('daily_work_packs', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), activityId: text('activity_id'), packNumber: text('pack_number'), title: text('title').notNull(), description: text('description'), workDate: text('work_date').notNull(), shift: text('shift').default('day'), plannedOutput: text('planned_output'), status: text('status').notNull().default('draft'), readinessMaterials: integer('readiness_materials').notNull().default(0), readinessEquipment: integer('readiness_equipment').notNull().default(0), readinessLabour: integer('readiness_labour').notNull().default(0), readinessDrawings: integer('readiness_drawings').notNull().default(0), readinessPermits: integer('readiness_permits').notNull().default(0), readinessMethod: integer('readiness_method').notNull().default(0), readinessQaHse: integer('readiness_qa_hse').notNull().default(0), readinessSubcontractor: integer('readiness_subcontractor').notNull().default(0), readinessOverall: integer('readiness_overall').notNull().default(0), releasedBy: text('released_by'), releasedAt: text('released_am'), foremanId: text('foreman_id'), notes: text('notes'), createdAt: text('erstellt_am').notNull(), updatedAt: text('aktualisiert_am').notNull() });
+export const workPackItems = sqliteTable('work_pack_items', { id: text('id').primaryKey(), workPackId: text('work_pack_id').notNull(), boqItemId: text('boq_item_id'), description: text('description').notNull(), plannedQuantity: real('planned_quantity').notNull().default(0), unit: text('unit').notNull().default('No.'), crewId: text('crew_id'), equipmentId: text('equipment_id'), notes: text('notes'), createdAt: text('erstellt_am').notNull() });
+export const dailyWorkExecutionRecords = sqliteTable('daily_work_execution_records', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), workPackId: text('work_pack_id').notNull(), activityId: text('activity_id'), boqItemId: text('boq_item_id'), recordDate: text('record_date').notNull(), description: text('description').notNull(), actualQuantity: real('actual_quantity').notNull().default(0), unit: text('unit').notNull().default('No.'), plannedVsActual: text('planned_vs_actual'), crewSize: integer('crew_size').default(0), hoursWorked: real('hours_worked').default(0), equipmentUsed: text('equipment_used'), materialsConsumed: text('materials_consumed'), weatherConditions: text('weather_conditions'), delaysEncountered: text('delays_encountered'), hseIncidents: integer('hse_incidents').default(0), qualityIssues: integer('quality_issues').default(0), recordedBy: text('recorded_by').notNull(), foremanId: text('foreman_id'), notes: text('notes'), createdAt: text('erstellt_am').notNull() });
+export const workExecutionResources = sqliteTable('work_execution_resources', { id: text('id').primaryKey(), executionRecordId: text('execution_record_id').notNull(), resourceType: text('resource_type').notNull(), resourceId: text('resource_id').notNull(), quantity: real('quantity').notNull().default(0), unit: text('unit').notNull().default('No.'), hoursUsed: real('hours_used'), notes: text('notes'), createdAt: text('erstellt_am').notNull() });
+export const dweAgentRecommendations = sqliteTable('dwe_agent_recommendations', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), agentId: text('agent_id'), projectId: text('project_id').notNull(), workPackId: text('work_pack_id'), executionRecordId: text('execution_record_id'), issue: text('issue').notNull(), evidence: text('evidence'), riskLevel: text('risk_level').notNull().default('medium'), recommendedAction: text('recommended_action').notNull(), owner: text('owner'), status: text('status').notNull().default('pending_review'), detectedAt: text('detected_am').notNull(), reviewedAt: text('reviewed_am'), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  dailyWorkPacks,
+  workPackItems,
+  dailyWorkExecutionRecords,
+  workExecutionResources,
+  dweAgentRecommendations,
   session,
   account,
   verification,
