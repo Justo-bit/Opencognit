@@ -853,6 +853,85 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-FIN-1: Cost Code + Budget Ledger Backbone =====
+export const costCodes = sqliteTable('cost_codes', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  code: text('code').notNull(),
+  description: text('description').notNull(),
+  parentCostCodeId: text('parent_cost_code_id'),
+  level: integer('level').notNull().default(1),
+  category: text('category').notNull().default('direct_cost'),
+  isActive: integer('is_active').notNull().default(1),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const projectBudgetLines = sqliteTable('project_budget_lines', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  costCodeId: text('cost_code_id').notNull(),
+  boqItemId: text('boq_item_id'),
+  description: text('description').notNull(),
+  budgetAmount: real('budget_amount').notNull().default(0),
+  contingencyAmount: real('contingency_amount').default(0),
+  totalBudget: real('total_budget').notNull().default(0),
+  currency: text('currency').default('KES'),
+  fiscalYear: text('fiscal_year'),
+  status: text('status').notNull().default('active'),
+  approvedBy: text('approved_by'),
+  approvedAt: text('approved_am'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const financialLedgerEntries = sqliteTable('financial_ledger_entries', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  costCodeId: text('cost_code_id').notNull(),
+  boqItemId: text('boq_item_id'),
+  activityId: text('activity_id'),
+  transactionType: text('transaction_type').notNull(),
+  amount: real('amount').notNull(),
+  currency: text('currency').default('KES'),
+  sourceDocumentType: text('source_document_type'),
+  sourceDocumentId: text('source_document_id'),
+  vendorId: text('vendor_id'),
+  subcontractorId: text('subcontractor_id'),
+  workerId: text('worker_id'),
+  equipmentId: text('equipment_id'),
+  description: text('description').notNull(),
+  entryDate: text('entry_date').notNull(),
+  postedBy: text('posted_by'),
+  approvalStatus: text('approval_status').notNull().default('posted'),
+  reversalOf: text('reversal_of'),
+  reversedByEntry: text('reversed_by_entry'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const financeAgentRecommendations = sqliteTable('finance_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  projectId: text('project_id').notNull(),
+  costCodeId: text('cost_code_id'),
+  issue: text('issue').notNull(),
+  evidence: text('evidence'),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  financialImpact: real('financial_impact').default(0),
+  recommendedAction: text('recommended_action').notNull(),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +986,10 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  costCodes,
+  projectBudgetLines,
+  financialLedgerEntries,
+  financeAgentRecommendations,
   session,
   account,
   verification,
