@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-IPC-2: Retention, Advance, Subcontractor, Approvals =====
+export const ipcRetentionRecords = sqliteTable('ipc_retention_records', { id: text('id').primaryKey(), ipcId: text('ipc_id').notNull(), retentionPct: real('retention_pct').notNull().default(0), retentionAmount: real('retention_amount').notNull().default(0), cumulativeRetained: real('cumulative_retained').notNull().default(0), releaseEligible: real('release_eligible').notNull().default(0), releasedAmount: real('released_amount').notNull().default(0), releaseDate: text('release_date'), releasedBy: text('released_by'), status: text('status').notNull().default('held'), notes: text('notes'), createdAt: text('erstellt_am').notNull() });
+export const advancePaymentRecords = sqliteTable('advance_payment_records', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), contractId: text('contract_id').notNull(), advanceAmount: real('advance_amount').notNull(), recoveryPct: real('recovery_pct').notNull().default(0), recoveredToDate: real('recovered_to_date').notNull().default(0), remainingBalance: real('remaining_balance').notNull().default(0), advanceDate: text('advance_date').notNull(), recoveryStartIpc: text('recovery_start_ipc'), bonded: integer('bonded').notNull().default(0), bondRef: text('bond_ref'), status: text('status').notNull().default('active'), notes: text('notes'), createdAt: text('erstellt_am').notNull(), updatedAt: text('aktualisiert_am').notNull() });
+export const subcontractorIpcClaims = sqliteTable('subcontractor_ipc_claims', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), ipcId: text('ipc_id'), subcontractorId: text('subcontractor_id').notNull(), contractId: text('contract_id').notNull(), claimNumber: text('claim_number'), description: text('description').notNull(), claimedAmount: real('claimed_amount').notNull().default(0), certifiedAmount: real('certified_amount').default(0), retentionDeducted: real('retention_deducted').default(0), previouslyCertified: real('previously_certified').default(0), amountDue: real('amount_due').notNull().default(0), status: text('status').notNull().default('draft'), certifiedBy: text('certified_by'), certifiedAt: text('certified_am'), notes: text('notes'), createdAt: text('erstellt_am').notNull(), updatedAt: text('aktualisiert_am').notNull() });
+export const ipcApprovals = sqliteTable('ipc_approvals', { id: text('id').primaryKey(), ipcId: text('ipc_id').notNull(), approvedBy: text('approved_by').notNull(), role: text('rolle').notNull().default('qs'), decision: text('decision').notNull().default('pending'), comments: text('comments'), approvedAt: text('approved_am').notNull(), createdAt: text('erstellt_am').notNull() });
+export const ipcReviews = sqliteTable('ipc_reviews', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), ipcId: text('ipc_id').notNull(), reviewedBy: text('reviewed_by').notNull(), role: text('rolle').notNull().default('project_manager'), decision: text('decision').notNull().default('no_action'), comments: text('comments'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  ipcRetentionRecords,
+  advancePaymentRecords,
+  subcontractorIpcClaims,
+  ipcApprovals,
+  ipcReviews,
   session,
   account,
   verification,
