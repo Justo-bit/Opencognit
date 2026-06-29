@@ -883,6 +883,68 @@ export const artifactStore = sqliteTable('artifact_store', {
   idxChecksum: index('artifact_store_checksum_idx').on(t.checksumSha256),
 }));
 
+// ===== IAM — Role and Permission Backbone (PR-IAM-1) =====
+export const roles = sqliteTable('roles', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').references(() => companies.id),
+  name: text('name').notNull(),
+  beschreibung: text('beschreibung'),
+  istSystem: integer('ist_system').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+}, (t) => ({
+  idxCompany: index('roles_company_idx').on(t.companyId),
+}));
+
+export const permissions = sqliteTable('permissions', {
+  id: text('id').primaryKey(),
+  module: text('module').notNull(),
+  action: text('action').notNull(),
+  resource: text('resource'),
+  beschreibung: text('beschreibung'),
+  createdAt: text('erstellt_am').notNull(),
+}, (t) => ({
+  idxModule: index('permissions_module_idx').on(t.module),
+  idxModuleAction: index('permissions_module_action_idx').on(t.module, t.action),
+}));
+
+export const rolePermissions = sqliteTable('role_permissions', {
+  roleId: text('role_id').notNull().references(() => roles.id),
+  permissionId: text('permission_id').notNull().references(() => permissions.id),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.roleId, t.permissionId] }),
+}));
+
+export const projectUsers = sqliteTable('project_users', {
+  id: text('id').primaryKey(),
+  projectId: text('projekt_id').notNull().references(() => projects.id),
+  userId: text('benutzer_id').notNull().references(() => users.id),
+  roleId: text('role_id').notNull().references(() => roles.id),
+  status: text('status').notNull().default('active'),
+  zugewiesenVon: text('zugewiesen_von'),
+  zugewiesenAm: text('zugewiesen_am').notNull(),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+}, (t) => ({
+  idxProject: index('project_users_project_idx').on(t.projectId),
+  idxUser: index('project_users_user_idx').on(t.userId),
+  idxRole: index('project_users_role_idx').on(t.roleId),
+}));
+
+export const userTenantRoles = sqliteTable('user_tenant_roles', {
+  id: text('id').primaryKey(),
+  userId: text('benutzer_id').notNull().references(() => users.id),
+  companyId: text('unternehmen_id').notNull().references(() => companies.id),
+  roleId: text('role_id').notNull().references(() => roles.id),
+  istPrimary: integer('ist_primary').notNull().default(0),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+}, (t) => ({
+  idxUser: index('user_tenant_roles_user_idx').on(t.userId),
+  idxCompany: index('user_tenant_roles_company_idx').on(t.companyId),
+  uniq: unique('user_tenant_roles_uniq').on(t.userId, t.companyId, t.roleId),
+}));
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -937,6 +999,7 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   artifactStore,
+  roles, permissions, rolePermissions, projectUsers, userTenantRoles,
   user,
   session,
   account,
