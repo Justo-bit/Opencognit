@@ -853,6 +853,13 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-PLN-2: Lookahead, Readiness, Blockers, Reviews =====
+export const lookaheadPlans = sqliteTable('lookahead_plans', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), lookaheadWeeks: integer('lookahead_weeks').notNull(), generatedAt: text('generated_am').notNull(), startDate: text('start_date').notNull(), endDate: text('end_date').notNull(), isCurrent: integer('is_current').notNull().default(0), createdAt: text('erstellt_am').notNull() });
+export const lookaheadReadiness = sqliteTable('lookahead_readiness', { id: text('id').primaryKey(), lookaheadId: text('lookahead_id').notNull(), activityId: text('activity_id').notNull(), readinessMaterials: integer('readiness_materials').notNull().default(0), readinessEquipment: integer('readiness_equipment').notNull().default(0), readinessLabour: integer('readiness_labour').notNull().default(0), readinessDrawings: integer('readiness_drawings').notNull().default(0), readinessPermits: integer('readiness_permits').notNull().default(0), readinessRfi: integer('readiness_rfi').notNull().default(0), readinessMethod: integer('readiness_method').notNull().default(0), readinessQaHse: integer('readiness_qa_hse').notNull().default(0), readinessSubcontractor: integer('readiness_subcontractor').notNull().default(0), readinessOverall: integer('readiness_overall').notNull().default(0), leadTimeDays: real('lead_time_days'), verifiedBy: text('verified_by'), verifiedAt: text('verified_am'), createdAt: text('erstellt_am').notNull() });
+export const scheduleBlockers = sqliteTable('schedule_blockers', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id').notNull(), activityId: text('activity_id').notNull(), blockerType: text('blocker_type').notNull(), description: text('description').notNull(), severity: text('severity').notNull().default('high'), raisedBy: text('raised_by').notNull(), raisedAt: text('raised_am').notNull(), resolution: text('resolution'), resolvedBy: text('resolved_by'), resolvedAt: text('resolved_am'), cascadingPredecessors: text('cascading_predecessors'), status: text('status').notNull().default('active'), createdAt: text('erstellt_am').notNull(), updatedAt: text('aktualisiert_am').notNull() });
+export const planningReviews = sqliteTable('planning_reviews', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id'), reviewedBy: text('reviewed_by').notNull(), role: text('rolle').notNull().default('planner'), reviewType: text('review_type').notNull().default('lookahead'), decision: text('decision').notNull().default('no_action'), comments: text('comments'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+export const plnReviews = sqliteTable('pln_reviews', { id: text('id').primaryKey(), companyId: text('unternehmen_id').notNull(), projectId: text('project_id'), reviewedBy: text('reviewed_by').notNull(), role: text('rolle').notNull().default('project_manager'), decision: text('decision').notNull().default('no_action'), comments: text('comments'), reviewedAt: text('reviewed_am').notNull(), createdAt: text('erstellt_am').notNull() });
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +914,11 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  lookaheadPlans,
+  lookaheadReadiness,
+  scheduleBlockers,
+  planningReviews,
+  plnReviews,
   session,
   account,
   verification,
