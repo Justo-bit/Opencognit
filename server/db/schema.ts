@@ -853,6 +853,118 @@ export const agentMessages = sqliteTable('agent_messages', {
   idxRecipientRead: index('agent_msg_recipient_read_idx').on(t.recipientId, t.readAt),
 }));
 
+// ===== PR-CON-1: Contract Register + Obligations Backbone =====
+export const contracts = sqliteTable('contracts', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  projectId: text('project_id').notNull(),
+  awardId: text('award_id'),
+  contractNumber: text('contract_number'),
+  title: text('title').notNull(),
+  contractType: text('contract_type').notNull().default('main_contract'),
+  counterpartyName: text('counterparty_name').notNull(),
+  counterpartyId: text('counterparty_id'),
+  scopeOfWork: text('scope_of_work'),
+  contractSum: real('contract_sum').notNull().default(0),
+  contingencySum: real('contingency_sum').default(0),
+  currency: text('currency').default('KES'),
+  startDate: text('start_date').notNull(),
+  endDate: text('end_date').notNull(),
+  originalCompletionDate: text('original_completion_date'),
+  currentCompletionDate: text('current_completion_date'),
+  signedDate: text('signed_date'),
+  governingLaw: text('governing_law'),
+  disputeResolution: text('dispute_resolution'),
+  bondType: text('bond_type'),
+  bondAmount: real('bond_amount'),
+  bondExpiry: text('bond_expiry'),
+  retentionPct: real('retention_pct').default(0),
+  retentionCap: real('retention_cap'),
+  defectsLiabilityMonths: integer('defects_liability_months').default(12),
+  status: text('status').notNull().default('draft'),
+  terminatedReason: text('terminated_reason'),
+  terminatedDate: text('terminated_date'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const contractParties = sqliteTable('contract_parties', {
+  id: text('id').primaryKey(),
+  contractId: text('contract_id').notNull(),
+  partyName: text('party_name').notNull(),
+  partyRole: text('party_role').notNull().default('contractor'),
+  contactPerson: text('contact_person'),
+  contactEmail: text('contact_email'),
+  contactPhone: text('contact_phone'),
+  address: text('address'),
+  signingAuthority: text('signing_authority'),
+  signedDate: text('signed_date'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractClauses = sqliteTable('contract_clauses', {
+  id: text('id').primaryKey(),
+  contractId: text('contract_id').notNull(),
+  clauseNumber: text('clause_number').notNull(),
+  clauseTitle: text('clause_title').notNull(),
+  clauseText: text('clause_text'),
+  clauseType: text('clause_type').notNull().default('general'),
+  isCritical: integer('is_critical').notNull().default(0),
+  deviationFromStandard: text('deviation_from_standard'),
+  riskLevel: text('risk_level').default('low'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractObligations = sqliteTable('contract_obligations', {
+  id: text('id').primaryKey(),
+  contractId: text('contract_id').notNull(),
+  clauseId: text('clause_id'),
+  obligationType: text('obligation_type').notNull(),
+  description: text('description').notNull(),
+  responsibleParty: text('responsible_party').notNull(),
+  dueDate: text('due_date'),
+  reminderDays: integer('reminder_days').default(7),
+  fulfilled: integer('fulfilled').notNull().default(0),
+  fulfilledDate: text('fulfilled_date'),
+  fulfilledBy: text('fulfilled_by'),
+  evidence: text('evidence'),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+  updatedAt: text('aktualisiert_am').notNull(),
+});
+
+export const contractDocuments = sqliteTable('contract_documents', {
+  id: text('id').primaryKey(),
+  contractId: text('contract_id').notNull(),
+  documentType: text('document_type').notNull(),
+  documentTitle: text('document_title').notNull(),
+  filePath: text('file_path'),
+  version: integer('version').default(1),
+  isCurrent: integer('is_current').notNull().default(1),
+  uploadedBy: text('uploaded_by'),
+  uploadedAt: text('uploaded_am').notNull(),
+  notes: text('notes'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
+export const contractAgentRecommendations = sqliteTable('contract_agent_recommendations', {
+  id: text('id').primaryKey(),
+  companyId: text('unternehmen_id').notNull(),
+  agentId: text('agent_id'),
+  contractId: text('contract_id').notNull(),
+  issue: text('issue').notNull(),
+  evidence: text('evidence'),
+  riskLevel: text('risk_level').notNull().default('medium'),
+  recommendedAction: text('recommended_action').notNull(),
+  owner: text('owner'),
+  status: text('status').notNull().default('pending_review'),
+  detectedAt: text('detected_am').notNull(),
+  reviewedAt: text('reviewed_am'),
+  createdAt: text('erstellt_am').notNull(),
+});
+
 // NOTE: Business Automation tables (customers, orders, invoices, accounting)
 // were removed from core schema. They will return as a plugin in the future.
 // The physical SQLite tables remain for backward compatibility but are no longer
@@ -907,6 +1019,12 @@ export const allTables = {
   learnedSkills,
   memoryConflicts,
   user,
+  contracts,
+  contractParties,
+  contractClauses,
+  contractObligations,
+  contractDocuments,
+  contractAgentRecommendations,
   session,
   account,
   verification,
